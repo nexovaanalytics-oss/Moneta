@@ -54,7 +54,7 @@ languages. The tax logic implements **German** rules – see the roadmap for oth
 |---|---|
 | [`ledger/`](ledger/) | XMR-Ledger: Python app, Dockerfile, tests |
 | [`deploy/nas/`](deploy/nas/) | `compose.yaml` and `.env.example` for the NAS stack |
-| [`deploy/mac/`](deploy/mac/) | XMRig start script, power measurement |
+| [`deploy/mac/`](deploy/mac/) | Installer and menu bar app for XMRig, start script, power measurement |
 | [`docs/`](docs/README.md) | Documentation in German, English, French and Spanish |
 
 ## Documentation
@@ -69,7 +69,7 @@ languages. The tax logic implements **German** rules – see the roadmap for oth
 
 1. Create a mining wallet, note its primary address and view key ([computer setup](docs/en/setup-mac.md#5-mining-wallet))
 2. On the NAS, create `compose.yaml`, `.env` and `ledger/data/config.toml`, then start the stack ([NAS setup](docs/en/setup-nas.md))
-3. Let the node sync (several days), then start XMRig with `deploy/mac/xmrig-start.sh`
+3. Let the node sync (several days), then set up the computer with `deploy/mac/install.sh` and start XMRig from the menu bar
 4. Open the dashboard at `http://<NAS-IP>:8090`
 
 Development: `pip install -r ledger/requirements.txt pytest && python -m pytest -q ledger/tests`

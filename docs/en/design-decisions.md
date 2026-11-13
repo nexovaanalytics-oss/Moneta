@@ -5,6 +5,16 @@
 Why Moneta is built the way it is. Add new entries at the top (date, context, decision, consequences).
 The [German version](../de/design-decisions.md) is the reference.
 
+### D-09 · 2026-11-13 – Starting the miner from a menu bar app, built locally instead of distributed signed
+Computers should be set up without terminal knowledge and started with a button. An installer
+(`deploy/mac/install.sh`) sets up XMRig as a launchd agent and builds the menu bar app from source on the computer
+itself (`swiftc` from the Command Line Tools, which Homebrew needs anyway). Locally built programs carry no
+quarantine attribute, so Gatekeeper does not prompt, and neither a paid Apple developer account nor notarization is
+needed. XMRig is not bundled but installed via Homebrew (DONATE 0 %, its own updates); the app only controls the
+agent and reads the local XMRig API. The `[[miner]]` entry in `config.toml` deliberately stays a manual step:
+watts are frozen with every sample and must be measured first. A signed, notarized app to download remains an
+option for later.
+
 ### D-08 · 2026-11-13 – Multilingual and open to contributors
 Moneta should be usable beyond the German-speaking world and invite people to join in. The project language for
 community files (README, CONTRIBUTING, CHANGELOG, SECURITY, templates) is English; README, CONTRIBUTING and the

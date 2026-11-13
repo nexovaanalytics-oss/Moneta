@@ -2,19 +2,22 @@
 # SPDX-License-Identifier: EUPL-1.2
 # Startet XMRig gegen den P2Pool auf der NAS – mit lesender API für den XMR-Ledger.
 #
-#   ./xmrig-start.sh        alle Kerne
+#   ./xmrig-start.sh        Threads aus ~/.config/moneta/threads, sonst alle Kerne
 #   ./xmrig-start.sh 3      3 Threads
 #
-# Einmalig anlegen (siehe docs/de/setup-mac.md; EN: docs/en/setup-mac.md):
+# Einmalig anlegen (deploy/mac/install.sh erledigt das; siehe docs/de/setup-mac.md, EN: docs/en/setup-mac.md):
 #   ~/.config/moneta/pool          Adresse des P2Pool-Stratum, z. B. 192.168.1.10:3333
 #   ~/.config/moneta/xmrig-token   API-Token für den XMR-Ledger (chmod 600)
+#   ~/.config/moneta/threads       optional: Thread-Zahl oder "all"
+#
+# Wird auch vom launchd-Agent des Installers aufgerufen (Ausgabe dann im Log, ohne Farben).
 set -euo pipefail
 
 CONF_DIR="${CONF_DIR:-$HOME/.config/moneta}"
 POOL="${POOL:-$( { [ -r "$CONF_DIR/pool" ] && tr -d '[:space:]' < "$CONF_DIR/pool"; } || true )}"
 API_PORT="${API_PORT:-18000}"
 TOKEN_FILE="${TOKEN_FILE:-$CONF_DIR/xmrig-token}"
-THREADS="${1:-}"
+THREADS="${1:-$( { [ -r "$CONF_DIR/threads" ] && tr -d '[:space:]' < "$CONF_DIR/threads"; } || true )}"
 
 if [ -z "$POOL" ]; then
   echo "Pool-Adresse fehlt: echo '<NAS-IP>:3333' > $CONF_DIR/pool  (oder POOL=… setzen)" >&2
@@ -28,11 +31,31 @@ if [ ! -r "$TOKEN_FILE" ]; then
 fi
 TOKEN="$(tr -d '[:space:]' < "$TOKEN_FILE")"
 
-args=(-o "$POOL" --cpu-priority 0 --pause-on-battery
-      --http-host 0.0.0.0 --http-port "$API_PORT" --http-access-token "$TOKEN")
-if [ -n "$THREADS" ]; then
-  args+=(-t "$THREADS")
+# launchd kennt /opt/homebrew/bin nicht von selbst – XMRig auch an den üblichen Homebrew-Orten suchen
+XMRIG="${XMRIG:-$(command -v xmrig || true)}"
+for candidate in /opt/homebrew/bin/xmrig /usr/local/bin/xmrig; do
+  [ -n "$XMRIG" ] && break
+  [ -x "$candidate" ] && XMRIG="$candidate"
+done
+if [ -z "$XMRIG" ]; then
+  echo "xmrig nicht gefunden – installieren mit: brew install xmrig" >&2
+  exit 1
 fi
 
-# caffeinate verhindert den Ruhezustand, solange XMRig läuft
-exec caffeinate -is xmrig "${args[@]}"
+args=(-o "$POOL" --cpu-priority 0 --pause-on-battery
+      --http-host 0.0.0.0 --http-port "$API_PORT" --http-access-token "$TOKEN")
+case "$THREADS" in
+  ""|all) ;;
+  *[!0-9]*) echo "Ungültige Thread-Zahl: $THREADS" >&2; exit 1 ;;
+  *) args+=(-t "$THREADS") ;;
+esac
+if [ ! -t 1 ]; then
+  args+=(--no-color)   # Ausgabe geht in ein Log
+fi
+
+# caffeinate verhindert den Ruhezustand, solange XMRig läuft. Es beobachtet diese PID, die nach dem exec
+# XMRig gehört: Stoppt launchd (oder Ctrl-C) XMRig, endet caffeinate von selbst.
+if command -v caffeinate >/dev/null 2>&1; then
+  caffeinate -is -w $$ &
+fi
+exec "$XMRIG" "${args[@]}"

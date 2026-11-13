@@ -5,6 +5,20 @@ Contributors: add user-facing changes under "Unreleased".
 
 ## Unreleased
 
+**deploy/mac**
+- New installer `deploy/mac/install.sh`: installs Homebrew and XMRig if needed, asks for pool address and threads,
+  creates or takes over the API token, sets up XMRig as launchd agent `moneta.xmrig` (log, restart after a crash,
+  optional autostart at login), allows `xmrig` in the macOS firewall on request and prints a ready-made
+  `[[miner]]` block for `config.toml`. Safe to run again; `--uninstall` removes it.
+- New menu bar app **Moneta Miner** (macOS 13+, SwiftUI, no dependencies): start/stop, threads, autostart,
+  hashrate, paused state and pool connection from the local XMRig API. Built locally by the installer with
+  `swiftc`, so no Gatekeeper prompt and no Apple developer account.
+- New `deploy/mac/moneta-miner.sh` to control the agent from the terminal (`start`, `stop`, `status`, `threads`,
+  `autostart`, `log`).
+- `xmrig-start.sh`: reads the thread count from `~/.config/moneta/threads`, finds Homebrew's `xmrig` without
+  `PATH` (launchd), disables colours when logging, and no longer requires `caffeinate` (Linux).
+- Docs: quick setup in `setup-mac.md`, design decision D-09 (all four languages).
+
 ## project – 2026-11-13: first public release
 
 - Published under EUPL-1.2.

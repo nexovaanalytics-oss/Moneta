@@ -55,7 +55,7 @@ La lógica fiscal aplica las normas **alemanas**; consulta la hoja de ruta para 
 |---|---|
 | [`ledger/`](ledger/) | XMR-Ledger: aplicación Python, Dockerfile, pruebas |
 | [`deploy/nas/`](deploy/nas/) | `compose.yaml` y `.env.example` para la pila del NAS |
-| [`deploy/mac/`](deploy/mac/) | Script de arranque de XMRig, medición del consumo |
+| [`deploy/mac/`](deploy/mac/) | Instalador y app de la barra de menús para XMRig, script de arranque, medición del consumo |
 | [`docs/`](docs/README.md) | Documentación en alemán, inglés, francés y español |
 
 ## Documentación
@@ -70,7 +70,7 @@ La lógica fiscal aplica las normas **alemanas**; consulta la hoja de ruta para 
 
 1. Crear una billetera de minería y anotar la dirección principal y la clave de visualización ([instalación equipo](docs/es/setup-mac.md#5-billetera-de-minería))
 2. En el NAS, crear `compose.yaml`, `.env` y `ledger/data/config.toml` y arrancar ([instalación NAS](docs/es/setup-nas.md))
-3. Dejar que el nodo se sincronice (varios días) y después iniciar XMRig con `deploy/mac/xmrig-start.sh`
+3. Dejar que el nodo se sincronice (varios días) y después configurar el equipo con `deploy/mac/install.sh` e iniciar XMRig desde la barra de menús
 4. Panel en `http://<IP-NAS>:8090`
 
 Desarrollo: `pip install -r ledger/requirements.txt pytest && python -m pytest -q ledger/tests`

@@ -51,7 +51,7 @@ Rechner 2 (z. B. MacBook Air) ─┼── XMRig ── Stratum ──▶ p2pool
 |---|---|
 | [`ledger/`](ledger/) | XMR-Ledger: Python-App, Dockerfile, Tests |
 | [`deploy/nas/`](deploy/nas/) | `compose.yaml` und `.env.example` für den NAS-Stack |
-| [`deploy/mac/`](deploy/mac/) | Startskript für XMRig, Strommessung |
+| [`deploy/mac/`](deploy/mac/) | Installer und Menüleisten-App für XMRig, Startskript, Strommessung |
 | [`docs/`](docs/README.md) | Dokumentation auf Deutsch, Englisch, Französisch und Spanisch |
 
 ## Dokumentation
@@ -66,7 +66,7 @@ Rechner 2 (z. B. MacBook Air) ─┼── XMRig ── Stratum ──▶ p2pool
 
 1. Mining-Wallet anlegen, Hauptadresse und View-Key notieren ([Setup Rechner](docs/de/setup-mac.md#5-mining-wallet))
 2. Auf der NAS `compose.yaml`, `.env` und `ledger/data/config.toml` anlegen, starten ([Setup NAS](docs/de/setup-nas.md))
-3. Node synchronisieren lassen (mehrere Tage), dann XMRig mit `deploy/mac/xmrig-start.sh` starten
+3. Node synchronisieren lassen (mehrere Tage), dann den Rechner mit `deploy/mac/install.sh` einrichten und XMRig über die Menüleiste starten
 4. Dashboard unter `http://<NAS-IP>:8090`
 
 Entwicklung: `pip install -r ledger/requirements.txt pytest && python -m pytest -q ledger/tests`

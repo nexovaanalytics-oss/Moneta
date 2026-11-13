@@ -1,0 +1,6 @@
+ledger/tests/
+**/__pycache__
+.git
+.github
+docs
+deploy

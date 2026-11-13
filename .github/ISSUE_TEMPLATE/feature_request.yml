@@ -1,0 +1,33 @@
+name: 💡 Idea or feature request
+description: Suggest an improvement or a new feature.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ideas are very welcome – in English, Deutsch, Français or Español.
+        Have a look at the [roadmap](https://github.com/nexovaanalytics-oss/Moneta/blob/main/ROADMAP.md) first;
+        maybe it is already planned.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Your proposal
+      description: How could it work? Mockups, examples and links are welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Contribution
+      options:
+        - label: I would like to work on this myself (with some guidance if needed).

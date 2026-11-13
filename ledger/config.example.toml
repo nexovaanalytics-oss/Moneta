@@ -1,0 +1,55 @@
+# XMR-Ledger – Konfiguration
+# Kopieren nach ledger/data/config.toml auf der NAS und ausfüllen (docs/de/ledger.md; EN: docs/en/ledger.md).
+# Diese Datei enthält deinen geheimen View-Key: nicht weitergeben, nicht ins Internet.
+
+[general]
+timezone = "Europe/Berlin"
+data_dir = "/data"
+
+[wallet]
+# Hauptadresse deiner Mining-Wallet (95 Zeichen, beginnt mit 4) – dieselbe wie in der docker-compose.yml bei p2pool
+address = "4..."
+# Geheimer View-Key: in monero-wallet-cli mit dem Befehl  viewkey  anzeigen (Zeile "secret:")
+# Er erlaubt nur das Ansehen von Eingängen, nicht das Ausgeben.
+view_key = ""
+restore_height = 0          # Blockhöhe kurz vor Anlage der Wallet (spart Zeit beim ersten Scan)
+# Passwort für die Nur-Lesen-Wallet-Datei auf der NAS (frei wählbar, nicht dein Mac-Wallet-Passwort)
+wallet_password = ""
+rpc_url = "http://wallet-rpc:18082/json_rpc"
+
+[web]
+port = 8090
+user = "admin"
+password = ""          # Pflicht – das Dashboard zeigt Finanzdaten
+
+[prices]
+# Optional: kostenloser CoinGecko-Demo-API-Key (höheres Abfragelimit). Leer lassen geht auch.
+coingecko_api_key = ""
+
+[power]
+poll_seconds = 60
+# Optionaler Mehrverbrauch der NAS durch Node + Pool (läuft rund um die Uhr). 0 = nicht ansetzen.
+nas_extra_watts = 0.0
+nas_note = ""
+
+# Strompreis brutto in ct/kWh. Bei Tarifänderung einen weiteren Block mit neuem valid_from ergänzen.
+[[power.tariff]]
+valid_from = "2026-01-01"
+ct_per_kwh = 35.0
+
+# Je Rechner ein Block. url = IP des Macs (feste IP im Router vergeben) + XMRig-API-Port.
+# token = derselbe Wert wie bei --http-access-token im xmrig-Befehl.
+# watts = gemessener MEHRverbrauch beim Minen (siehe docs/de/setup-mac.md; EN: docs/en/setup-mac.md).
+[[miner]]
+name = "Rechner 1 (z. B. MacBook Pro M3 Pro)"
+url = "http://<IP-DES-RECHNERS>:18000"
+token = ""
+watts = 12.0
+note = "Beispiel: gemessen am TT.MM.JJJJ mit powermetrics: 16,8 W Last (11 Threads) - 6,7 W Leerlauf = 10,1 W; +10 % Netzteil, aufgerundet wegen RAM"
+
+[[miner]]
+name = "Rechner 2 (z. B. MacBook Air M1)"
+url = "http://<IP-DES-ZWEITEN-RECHNERS>:18000"
+token = ""
+watts = 11.0
+note = "Beispiel: gemessen am TT.MM.JJJJ mit powermetrics: 9,6 W Last - 0,5 W Leerlauf = 9,1 W; +10 % Netzteil, aufgerundet wegen RAM; Betrieb mit 3 Threads"

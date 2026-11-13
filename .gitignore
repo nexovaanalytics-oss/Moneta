@@ -1,0 +1,19 @@
+# Geheimnisse und Laufzeitdaten – niemals einchecken
+.env
+*.env
+!.env.example
+config.toml
+ledger/data/
+ledger/wallets/
+*.sqlite
+*.sqlite-*
+*.keys
+kurse_manuell.csv
+
+# Python / System
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+.DS_Store
+._*

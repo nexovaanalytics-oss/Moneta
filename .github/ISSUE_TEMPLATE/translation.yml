@@ -1,0 +1,40 @@
+name: 🌍 Translation
+description: A translation is missing, outdated or could be better – or you want to add a language.
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Merci · Danke · Gracias · Thank you!
+        Docs live in `docs/<de|en|fr|es>/` with identical file names; the German version is the reference.
+  - type: dropdown
+    id: language
+    attributes:
+      label: Language
+      options:
+        - English
+        - Deutsch
+        - Français
+        - Español
+        - New language
+    validations:
+      required: true
+  - type: input
+    id: pages
+    attributes:
+      label: Page(s) or UI area
+      placeholder: e.g. docs/fr/setup-nas.md, dashboard page "Strom"
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: What should change?
+    validations:
+      required: true
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Contribution
+      options:
+        - label: I would like to submit the translation myself.

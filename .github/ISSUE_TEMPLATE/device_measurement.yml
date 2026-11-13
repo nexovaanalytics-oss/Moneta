@@ -1,0 +1,61 @@
+name: 📊 Device measurement
+description: Share hashrate and power numbers for your device – helps everyone estimate costs. No code needed.
+title: "[Device] "
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you! Your numbers will be added to the reference table in the docs.
+        How to measure: [computer setup, step 3](https://github.com/nexovaanalytics-oss/Moneta/blob/main/docs/en/setup-mac.md#3-measure-hashrate-and-extra-power-draw).
+  - type: input
+    id: device
+    attributes:
+      label: Device / CPU
+      placeholder: e.g. MacBook Pro M4 (10 cores), Raspberry Pi 5 8 GB, Ryzen 7 5700U laptop
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system and XMRig version
+      placeholder: e.g. macOS 15.1, XMRig 6.26.0 (Homebrew)
+    validations:
+      required: true
+  - type: input
+    id: threads
+    attributes:
+      label: Threads
+      placeholder: e.g. 8
+    validations:
+      required: true
+  - type: input
+    id: hashrate
+    attributes:
+      label: Hashrate (H/s), after 5+ minutes
+      placeholder: e.g. 3,100 H/s (starts at 3,400, drops after 5 min)
+    validations:
+      required: true
+  - type: input
+    id: power
+    attributes:
+      label: Power – idle / load / extra (W)
+      placeholder: e.g. 4 W / 14 W / 10 W
+    validations:
+      required: true
+  - type: dropdown
+    id: method
+    attributes:
+      label: Measurement method
+      options:
+        - powermetrics (macOS)
+        - Metering plug
+        - Software reading (e.g. RAPL, sensors)
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Throttling, fan noise, huge pages, cooling, measurement date …

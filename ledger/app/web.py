@@ -1,0 +1,482 @@
+# SPDX-License-Identifier: EUPL-1.2
+"""Dashboard, Formulare und Downloads (nur im Heimnetz, mit Passwort)."""
+from __future__ import annotations
+
+import base64
+import hmac
+import html
+import logging
+import urllib.parse
+from datetime import date, datetime, time as dtime
+from decimal import Decimal, InvalidOperation
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+import db
+import ledger
+import miners
+import prices
+import report
+import version
+from config import Config
+
+log = logging.getLogger("web")
+CFG: Config | None = None
+
+
+# ---------- Formatierung ----------
+def de(v, digits=2) -> str:
+    if v is None:
+        return "–"
+    s = f"{float(v):,.{digits}f}"
+    return s.replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def eurf(v) -> str:
+    return "–" if v is None else f"{de(v)} €"
+
+
+def xmrf(pico: int | None, digits=6) -> str:
+    return "–" if pico is None else de(ledger.xmr(pico), digits)
+
+
+def dfmt(d: date | None) -> str:
+    return "–" if d is None else d.strftime("%d.%m.%Y")
+
+
+def tsfmt(ts: int | float | None) -> str:
+    if not ts:
+        return "–"
+    return datetime.fromtimestamp(float(ts), CFG.tz).strftime("%d.%m.%Y %H:%M")
+
+
+def esc(s) -> str:
+    return html.escape(str(s))
+
+
+def parse_dec(s: str) -> Decimal:
+    s = (s or "").strip().replace(" ", "")
+    if "," in s:
+        s = s.replace(".", "").replace(",", ".")
+    return Decimal(s)
+
+
+CSS = """
+:root{--bg:#f6f7f9;--card:#fff;--ink:#1d2430;--mut:#667085;--line:#e4e7ec;--acc:#f26822;--ok:#12805c;--warn:#b54708;--bad:#b42318}
+*{box-sizing:border-box}body{margin:0;font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+header{background:#1d2430;color:#fff;padding:14px 24px;display:flex;gap:24px;align-items:center;flex-wrap:wrap}
+header b{font-size:17px}header a{color:#cfd6e4;text-decoration:none}header a.on,header a:hover{color:#fff}
+main{max-width:1180px;margin:0 auto;padding:22px}
+h1{font-size:22px;margin:4px 0 16px}h2{font-size:16px;margin:26px 0 10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.card .k{color:var(--mut);font-size:13px}.card .v{font-size:22px;font-weight:600;margin-top:4px;font-variant-numeric:tabular-nums}
+.card .s{color:var(--mut);font-size:12.5px;margin-top:4px}
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;font-size:13.5px;vertical-align:top}
+th{background:#f0f2f5;font-weight:600}td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.mono{font-family:ui-monospace,Menlo,monospace;font-size:12px}.mut{color:var(--mut)}
+.ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+.pill{display:inline-block;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:600}
+.pill.ok{background:#e7f6ef}.pill.warn{background:#fef0e6}.pill.bad{background:#fdecea}.pill.mut{background:#eef0f3}
+form.inline{display:flex;gap:10px;flex-wrap:wrap;align-items:end;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
+label{display:flex;flex-direction:column;font-size:12.5px;color:var(--mut);gap:4px}
+input,select{font:inherit;padding:7px 9px;border:1px solid #cfd4dc;border-radius:7px;min-width:120px}
+button,.btn{font:inherit;background:var(--acc);color:#fff;border:0;border-radius:7px;padding:8px 14px;cursor:pointer;text-decoration:none;display:inline-block}
+button.sec{background:#eef0f3;color:var(--ink)}footer{margin-top:40px;color:var(--mut);font-size:12px}.note{background:#fff8e6;border:1px solid #f5d77a;border-radius:10px;padding:10px 14px;font-size:13.5px}
+"""
+
+NAV = [("/", "Übersicht"), ("/zufluesse", "Zuflüsse"), ("/strom", "Strom"), ("/lose", "Lose"),
+       ("/abgaenge", "Abgänge"), ("/rechner", "Verkaufs-Rechner")]
+
+
+def page(path: str, title: str, body: str, refresh: int | None = None) -> str:
+    nav = "".join(f'<a href="{h}" class="{"on" if h == path else ""}">{esc(t)}</a>' for h, t in NAV)
+    meta = f'<meta http-equiv="refresh" content="{refresh}">' if refresh else ""
+    return (f'<!doctype html><html lang="de"><head><meta charset="utf-8">'
+            f'<meta name="viewport" content="width=device-width,initial-scale=1">{meta}'
+            f'<title>{esc(title)} – XMR-Ledger</title><style>{CSS}</style></head><body>'
+            f'<header><b>XMR-Ledger</b>{nav}</header><main>{body}'
+            f'<footer>{esc(version.label())} · Kursdaten: CoinGecko</footer></main></body></html>')
+
+
+def year_select(path: str, year: int) -> str:
+    c = db.get()
+    years = {datetime.now(CFG.tz).year}
+    for r in c.execute("SELECT DISTINCT ts FROM inflows"):
+        years.add(datetime.fromtimestamp(r["ts"], CFG.tz).year)
+    for r in c.execute("SELECT DISTINCT substr(day,1,4) AS y FROM power_daily"):
+        years.add(int(r["y"]))
+    opts = "".join(f'<option value="{y}" {"selected" if y == year else ""}>{y}</option>' for y in sorted(years))
+    return (f'<form class="inline" method="get" action="{path}" style="padding:8px 12px;display:inline-flex">'
+            f'<label>Jahr<select name="jahr" onchange="this.form.submit()">{opts}</select></label></form>')
+
+
+# ---------- Seiten ----------
+def p_overview(q) -> str:
+    year = int(q.get("jahr", [datetime.now(CFG.tz).year])[0])
+    s = ledger.year_summary(CFG, year)
+    h = ledger.holdings(CFG)
+    cur = prices.current_price(CFG)
+    value_now = None if cur is None else ledger.xmr(h["remaining"]) * cur
+
+    werr = db.get_meta("wallet_error") or ""
+    wsync = db.get_meta("wallet_last_sync")
+    wheight = db.get_meta("wallet_height")
+    sync_state = (f'<span class="pill bad">Fehler</span> <span class="mut">{esc(werr)}</span>' if werr else
+                  f'<span class="pill ok">OK</span> Block {de(int(wheight), 0) if wheight else "–"}, '
+                  f'zuletzt {tsfmt(wsync)}' if wsync else '<span class="pill mut">noch kein Abgleich</span>')
+
+    fg = ('<span class="pill ok">unter 256 €</span>' if s["under_freigrenze_22"]
+          else '<span class="pill warn">über 256 €</span>')
+    warn = (f'<p class="note">{s["missing_prices"]} Zufluss/Zuflüsse ohne Kurs – wird automatisch nachgeholt; '
+            f'sonst in <span class="mono">kurse_manuell.csv</span> eintragen.</p>') if s["missing_prices"] else ""
+
+    cards = f"""
+    <div class="grid">
+      <div class="card"><div class="k">Bestand (Mining-Lose)</div><div class="v">{xmrf(h['remaining'])} XMR</div>
+        <div class="s">aktuell ≈ {eurf(None if value_now is None else ledger.eur(value_now))} · AK {eurf(h['cost'])}</div></div>
+      <div class="card"><div class="k">davon steuerfrei veräußerbar</div><div class="v">{xmrf(h['free_now'])} XMR</div>
+        <div class="s">nächste Freigabe: {dfmt(h['next_free'])}</div></div>
+      <div class="card"><div class="k">Einnahmen {year}</div><div class="v">{eurf(s['income'])}</div>
+        <div class="s">{s['inflow_count']} Auszahlungen · {xmrf(s['inflow_amount'])} XMR</div></div>
+      <div class="card"><div class="k">Stromkosten {year}</div><div class="v">{eurf(s['power_cost'])}</div>
+        <div class="s">{de(s['power_kwh'], 1)} kWh</div></div>
+      <div class="card"><div class="k">Ergebnis {year} (Einnahmen − Strom)</div><div class="v">{eurf(s['result'])}</div>
+        <div class="s">Freigrenze: {fg}</div></div>
+      <div class="card"><div class="k">XMR-Kurs aktuell</div><div class="v">{eurf(cur)}</div>
+        <div class="s">CoinGecko, lokal gespeichert</div></div>
+    </div>"""
+
+    live = miners.live_status()
+    rows = ""
+    for m in CFG.miners:
+        st = live.get(m.name)
+        if not st:
+            state = '<span class="pill mut">noch keine Abfrage</span>'
+        elif st["mining"]:
+            state = '<span class="pill ok">mint</span>'
+        elif st["reachable"]:
+            state = '<span class="pill warn">pausiert</span>'
+        else:
+            state = '<span class="pill mut">nicht erreichbar</span>'
+        rows += (f"<tr><td>{esc(m.name)}</td><td>{state}</td>"
+                 f"<td class='n'>{de(st['hashrate'], 0) if st else '–'} H/s</td>"
+                 f"<td class='n'>{de(m.watts, 1)} W</td><td class='mut'>{tsfmt(st['ts']) if st else '–'}</td></tr>")
+    devices = (f"<h2>Geräte</h2><table><tr><th>Gerät</th><th>Status</th><th class='n'>Hashrate</th>"
+               f"<th class='n'>Mehrverbrauch</th><th>letzte Abfrage</th></tr>{rows or '<tr><td colspan=5 class=mut>Keine Rechner in config.toml</td></tr>'}</table>")
+
+    last = s["inflows"][-12:][::-1]
+    inrows = "".join(
+        f"<tr><td>{x['dt'].strftime('%d.%m.%Y %H:%M')}</td><td class='n'>{x['height']}</td>"
+        f"<td class='n'>{xmrf(x['amount'], 8)}</td><td class='n'>{eurf(x['price'])}</td>"
+        f"<td class='n'>{eurf(None if x['value'] is None else ledger.eur(x['value']))}</td></tr>" for x in last)
+    recent = (f"<h2>Letzte Auszahlungen</h2><table><tr><th>Zeit</th><th class='n'>Block</th><th class='n'>XMR</th>"
+              f"<th class='n'>Kurs</th><th class='n'>Wert</th></tr>"
+              f"{inrows or '<tr><td colspan=5 class=mut>Noch keine Auszahlungen</td></tr>'}</table>")
+
+    body = (f"<h1>Übersicht {year_select('/', year)}</h1>{warn}{cards}"
+            f"<h2>Wallet-Abgleich</h2><p>{sync_state}</p>{devices}{recent}"
+            f'<h2>Jahresbericht</h2><p><a class="btn" href="/bericht.xlsx?jahr={year}">Excel-Bericht {year}</a> '
+            f'<a class="btn" style="background:#475467" href="/zufluesse.csv?jahr={year}">Zuflüsse als CSV</a></p>')
+    return page("/", "Übersicht", body, refresh=120)
+
+
+def p_inflows(q) -> str:
+    year = int(q.get("jahr", [datetime.now(CFG.tz).year])[0])
+    rows = ledger.inflows_in_year(CFG, year)
+    tr = "".join(
+        f"<tr><td>{x['dt'].strftime('%d.%m.%Y %H:%M:%S')}</td><td class='n'>{x['height']}</td>"
+        f"<td class='mono'>{esc(x['txid'])}</td><td class='n'>{xmrf(x['amount'], 12)}</td>"
+        f"<td class='n'>{eurf(x['price'])}</td><td class='n'>{eurf(None if x['value'] is None else ledger.eur(x['value']))}</td>"
+        f"<td class='mut'>{esc(x['source']) or '<span class=bad>Kurs fehlt</span>'}</td></tr>" for x in rows)
+    other = ledger.inflows_in_year(CFG, year, kind="in")
+    tr2 = "".join(
+        f"<tr><td>{x['dt'].strftime('%d.%m.%Y %H:%M')}</td><td class='n'>{x['height']}</td>"
+        f"<td class='mono'>{esc(x['txid'])}</td><td class='n'>{xmrf(x['amount'], 12)}</td></tr>" for x in other)
+    body = (f"<h1>Zuflüsse {year_select('/zufluesse', year)}</h1>"
+            f"<table><tr><th>Zeitpunkt</th><th class='n'>Block</th><th>TXID</th><th class='n'>XMR</th>"
+            f"<th class='n'>Kurs EUR</th><th class='n'>Wert EUR</th><th>Kursquelle</th></tr>"
+            f"{tr or '<tr><td colspan=7 class=mut>Keine Zuflüsse</td></tr>'}</table>"
+            f"<h2>Sonstige Zugänge (kein Mining, nicht als Einnahme gezählt)</h2>"
+            f"<p class='mut'>Die Nur-Lesen-Wallet sieht auch Rückgeld eigener Überweisungen. Solche Eingänge stehen hier.</p>"
+            f"<table><tr><th>Zeitpunkt</th><th class='n'>Block</th><th>TXID</th><th class='n'>XMR</th></tr>"
+            f"{tr2 or '<tr><td colspan=4 class=mut>keine</td></tr>'}</table>")
+    return page("/zufluesse", "Zuflüsse", body)
+
+
+def p_power(q) -> str:
+    year = int(q.get("jahr", [datetime.now(CFG.tz).year])[0])
+    pm = ledger.power_by_month(CFG, year)
+    tr = "".join(
+        f"<tr><td>{p['month']}</td><td>{esc(p['device'])}</td><td class='n'>{de((p['secs'] or 0) / 3600, 1)} h</td>"
+        f"<td class='n'>{de(p['hashrate'], 0)} H/s</td><td class='n'>{de(p['watts_eff'], 1)} W</td>"
+        f"<td class='n'>{de(p['kwh'], 3)}</td><td class='n'>{de(p['tariff_eff'], 2)} ct</td>"
+        f"<td class='n'>{eurf(p['cost'])}</td></tr>" for p in pm)
+    tot = ledger.power_by_device(CFG, year)
+    tr2 = "".join(f"<tr><td>{esc(p['device'])}</td><td class='n'>{de((p['secs'] or 0) / 3600, 1)} h</td>"
+                  f"<td class='n'>{de(p['kwh'], 3)}</td><td class='n'>{eurf(p['cost'])}</td></tr>" for p in tot)
+    tariffs = ", ".join(f"ab {t.valid_from.strftime('%d.%m.%Y')}: {de(t.ct_per_kwh)} ct/kWh" for t in CFG.tariffs)
+    body = (f"<h1>Strom {year_select('/strom', year)}</h1>"
+            f"<p class='mut'>Methode: gemessener Mehrverbrauch × protokollierte Mining-Zeit × Strompreis "
+            f"({esc(tariffs)}). Abfrage alle {CFG.poll_seconds} s.</p>"
+            f"<h2>Je Gerät</h2><table><tr><th>Gerät</th><th class='n'>Mining-Zeit</th><th class='n'>kWh</th>"
+            f"<th class='n'>Kosten</th></tr>{tr2 or '<tr><td colspan=4 class=mut>noch keine Daten</td></tr>'}</table>"
+            f"<h2>Je Monat</h2><table><tr><th>Monat</th><th>Gerät</th><th class='n'>Mining-Zeit</th>"
+            f"<th class='n'>Ø Hashrate</th><th class='n'>Ø Watt</th><th class='n'>kWh</th><th class='n'>Ø Preis</th>"
+            f"<th class='n'>Kosten</th></tr>{tr or '<tr><td colspan=8 class=mut>noch keine Daten</td></tr>'}</table>")
+    return page("/strom", "Strom", body)
+
+
+def p_lots(q) -> str:
+    h = ledger.holdings(CFG)
+    today = datetime.now(CFG.tz).date()
+    tr = ""
+    for l in h["lots"]:
+        free = today >= l.free_from
+        st = ('<span class="pill ok">steuerfrei</span>' if free else
+              f'<span class="pill warn">noch {(l.free_from - today).days} Tage</span>')
+        if l.remaining == 0:
+            st = '<span class="pill mut">abgegangen</span>'
+        tr += (f"<tr><td>{dfmt(l.day)}</td><td class='n'>{xmrf(l.amount, 8)}</td>"
+               f"<td class='n'>{eurf(None if l.cost_total is None else ledger.eur(l.cost_total))}</td>"
+               f"<td>{dfmt(l.free_from)}</td><td class='n'>{xmrf(l.remaining, 8)}</td><td>{st}</td>"
+               f"<td class='mono mut'>{esc(l.txid[:16])}…</td></tr>")
+    body = (f"<h1>Lose (FIFO)</h1><p class='mut'>Jede Mining-Auszahlung ist ein eigenes Los mit Anschaffungsdatum "
+            f"und Anschaffungskosten (Wert beim Zufluss). „steuerfrei ab“ = erster Tag nach Ablauf der Jahresfrist.</p>"
+            f"<table><tr><th>Zufluss</th><th class='n'>XMR</th><th class='n'>AK</th><th>steuerfrei ab</th>"
+            f"<th class='n'>Rest</th><th>Status</th><th>TXID</th></tr>"
+            f"{tr or '<tr><td colspan=7 class=mut>Noch keine Lose</td></tr>'}</table>")
+    return page("/lose", "Lose", body)
+
+
+def p_disposals(q, msg: str = "") -> str:
+    _, disposals = ledger.load_lots_and_disposals(CFG)
+    tr = ""
+    for d in reversed(disposals):
+        tg = d.taxable_gain
+        tr += (f"<tr><td>{dfmt(d.day)}</td><td>{esc(d.kind_label)}</td><td class='n'>{xmrf(d.amount, 8)}</td>"
+               f"<td class='n'>{eurf(d.proceeds)}</td>"
+               f"<td class='n'>{'–' if d.kind == 'own' else eurf(None if tg is None else ledger.eur(tg))}</td>"
+               f"<td class='mut'>{esc(d.txid[:16])} {esc(d.note)}"
+               f"{' <span class=bad>Bestand reicht nicht</span>' if d.shortfall else ''}</td>"
+               f"<td><form method='post' action='/abgaenge/loeschen' onsubmit=\"return confirm('Abgang löschen?')\">"
+               f"<input type='hidden' name='id' value='{d.id}'><button class='sec'>Löschen</button></form></td></tr>")
+    today = datetime.now(CFG.tz).date().isoformat()
+    form = f"""
+    <form class="inline" method="post" action="/abgaenge">
+      <label>Datum<input type="date" name="datum" value="{today}" required></label>
+      <label>Uhrzeit<input type="time" name="uhrzeit" value="12:00"></label>
+      <label>Menge XMR (inkl. Gebühr)<input name="menge" placeholder="0,05" required></label>
+      <label>Art<select name="art"><option value="sale">Verkauf/Tausch</option><option value="spend">Bezahlung</option>
+        <option value="own">Übertrag auf eigene Wallet</option></select></label>
+      <label>Erlös/Gegenwert EUR<input name="erloes" placeholder="bei Verkauf/Bezahlung"></label>
+      <label>TXID<input name="txid" style="min-width:220px"></label>
+      <label>Notiz<input name="notiz"></label>
+      <button>Abgang erfassen</button>
+    </form>"""
+    body = (f"<h1>Abgänge</h1>{f'<p class=note>{esc(msg)}</p>' if msg else ''}"
+            f"<p class='mut'>Die Nur-Lesen-Wallet kann Ausgänge nicht erkennen. Trage jede Überweisung aus der "
+            f"Mining-Wallet hier ein: Menge = an andere gesendeter Betrag + Netzwerkgebühr (das Rückgeld an "
+            f"dich selbst nicht mitzählen). Bei Tausch in eine andere Kryptowährung ist der Erlös der EUR-Wert "
+            f"des Erhaltenen. Verbrauch nach FIFO.</p>{form}"
+            f"<h2>Erfasste Abgänge</h2><table><tr><th>Datum</th><th>Art</th><th class='n'>XMR</th>"
+            f"<th class='n'>Erlös</th><th class='n'>stpfl. Gewinn</th><th>TXID / Notiz</th><th></th></tr>"
+            f"{tr or '<tr><td colspan=7 class=mut>keine</td></tr>'}</table>")
+    return page("/abgaenge", "Abgänge", body)
+
+
+def p_calc(q) -> str:
+    cur = prices.current_price(CFG)
+    menge = q.get("menge", [""])[0]
+    datum = q.get("datum", [datetime.now(CFG.tz).date().isoformat()])[0]
+    kurs = q.get("kurs", [de(cur, 2) if cur else ""])[0]
+    form = f"""
+    <form class="inline" method="get" action="/rechner">
+      <label>Menge XMR<input name="menge" value="{esc(menge)}" placeholder="z. B. 0,1" required></label>
+      <label>Verkaufsdatum<input type="date" name="datum" value="{esc(datum)}"></label>
+      <label>Kurs EUR/XMR<input name="kurs" value="{esc(kurs)}"></label>
+      <button>Berechnen</button>
+    </form>"""
+    result = ""
+    if menge:
+        try:
+            amt, k, d = parse_dec(menge), parse_dec(kurs), date.fromisoformat(datum)
+            r = ledger.sale_calc(CFG, amt, d, k)
+            pill_tax = '<span class="pill warn">steuerpflichtig</span>'
+            pill_free = '<span class="pill ok">steuerfrei</span>'
+            tr = "".join(
+                f"<tr><td>{dfmt(x['lot'].day)}</td><td class='n'>{xmrf(x['amount'], 8)}</td>"
+                f"<td class='n'>{eurf(None if x['cost'] is None else ledger.eur(x['cost']))}</td>"
+                f"<td class='n'>{eurf(ledger.eur(x['proceeds']))}</td>"
+                f"<td class='n'>{eurf(None if x['gain'] is None else ledger.eur(x['gain']))}</td>"
+                f"<td>{dfmt(x['lot'].free_from)}</td>"
+                f"<td>{pill_tax if x['taxable'] else pill_free}</td></tr>"
+                for x in r["rows"])
+            short = (f'<p class="note">Bestand reicht nicht: es fehlen {xmrf(r["shortfall"], 8)} XMR.</p>'
+                     if r["shortfall"] else "")
+            latest_free = max((x["lot"].free_from for x in r["rows"] if x["taxable"]), default=None)
+            hint = (f"<p>Bei einem Verkauf ab dem <b>{dfmt(latest_free)}</b> wären alle betroffenen Lose "
+                    f"außerhalb der Jahresfrist (bei gleichem Bestand).</p>") if latest_free else ""
+            result = (f"{short}<div class='grid' style='margin-top:14px'>"
+                      f"<div class='card'><div class='k'>steuerpflichtiger Gewinn (§ 23)</div>"
+                      f"<div class='v'>{eurf(None if r['taxable_gain'] is None else ledger.eur(r['taxable_gain']))}</div>"
+                      f"<div class='s'>{xmrf(r['taxable_amount'], 8)} XMR innerhalb der Jahresfrist</div></div>"
+                      f"<div class='card'><div class='k'>steuerfreier Gewinn</div>"
+                      f"<div class='v'>{eurf(None if r['free_gain'] is None else ledger.eur(r['free_gain']))}</div>"
+                      f"<div class='s'>{xmrf(r['free_amount'], 8)} XMR außerhalb der Jahresfrist</div></div></div>"
+                      f"{hint}<h2>Betroffene Lose (FIFO)</h2><table><tr><th>Los vom</th><th class='n'>XMR</th>"
+                      f"<th class='n'>AK</th><th class='n'>Erlös</th><th class='n'>Gewinn</th><th>steuerfrei ab</th>"
+                      f"<th></th></tr>{tr}</table>"
+                      f"<p class='mut'>Freigrenze § 23 Abs. 3 S. 5 EStG: Gewinne aller privaten Veräußerungsgeschäfte "
+                      f"im Kalenderjahr unter 1.000 € bleiben steuerfrei. Gebühren sind hier nicht abgezogen.</p>")
+        except (InvalidOperation, ValueError) as e:
+            result = f"<p class='note'>Eingabe prüfen: {esc(e)}</p>"
+    body = (f"<h1>Verkaufs-Rechner (§ 23 EStG)</h1><p class='mut'>Simuliert einen Verkauf oder Tausch aus dem "
+            f"aktuellen Bestand nach FIFO – es wird nichts gespeichert.</p>{form}{result}")
+    return page("/rechner", "Verkaufs-Rechner", body)
+
+
+# ---------- HTTP ----------
+class Handler(BaseHTTPRequestHandler):
+    server_version = "xmr-ledger"
+
+    def log_message(self, fmt, *args):
+        log.debug(fmt, *args)
+
+    def _auth(self) -> bool:
+        h = self.headers.get("Authorization", "")
+        if h.startswith("Basic "):
+            try:
+                user, _, pw = base64.b64decode(h[6:]).decode().partition(":")
+                if hmac.compare_digest(user, CFG.web_user) and hmac.compare_digest(pw, CFG.web_password):
+                    return True
+            except Exception:  # noqa: BLE001
+                pass
+        self.send_response(401)
+        self.send_header("WWW-Authenticate", 'Basic realm="XMR-Ledger"')
+        self.end_headers()
+        return False
+
+    def _send(self, body: bytes, ctype="text/html; charset=utf-8", status=200, filename=None):
+        self.send_response(status)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        if filename:
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _redirect(self, to: str):
+        self.send_response(303)
+        self.send_header("Location", to)
+        self.end_headers()
+
+    def _same_origin(self) -> bool:
+        """Schutz gegen CSRF: POST nur von Seiten dieses Dashboards annehmen."""
+        host = self.headers.get("Host", "")
+        src = self.headers.get("Origin") or self.headers.get("Referer") or ""
+        if not src:
+            return False
+        if src == "null":
+            return False
+        return urllib.parse.urlparse(src).netloc == host
+
+    def handle_one_request(self):
+        try:
+            super().handle_one_request()
+        finally:
+            db.close_thread()
+
+    def do_GET(self):  # noqa: N802
+        u = urllib.parse.urlparse(self.path)
+        if u.path == "/health":  # ohne Passwort, für den Docker-Healthcheck
+            self._send(b"ok", "text/plain; charset=utf-8")
+            return
+        if not self._auth():
+            return
+        q = urllib.parse.parse_qs(u.query)
+        try:
+            try:
+                year = int(q.get("jahr", [datetime.now(CFG.tz).year])[0])
+                if not 2000 <= year <= 2200:
+                    raise ValueError
+            except ValueError:
+                self._send("Ungültiges Jahr".encode(), "text/plain; charset=utf-8", 400)
+                return
+            if u.path == "/":
+                self._send(p_overview(q).encode())
+            elif u.path == "/zufluesse":
+                self._send(p_inflows(q).encode())
+            elif u.path == "/strom":
+                self._send(p_power(q).encode())
+            elif u.path == "/lose":
+                self._send(p_lots(q).encode())
+            elif u.path == "/abgaenge":
+                self._send(p_disposals(q).encode())
+            elif u.path == "/rechner":
+                self._send(p_calc(q).encode())
+            elif u.path == "/bericht.xlsx":
+                self._send(report.build_xlsx(CFG, year),
+                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           filename=f"monero-mining-{year}.xlsx")
+            elif u.path == "/zufluesse.csv":
+                self._send(report.build_csv(CFG, year), "text/csv; charset=utf-8",
+                           filename=f"monero-zufluesse-{year}.csv")
+            else:
+                self._send(b"Nicht gefunden", "text/plain; charset=utf-8", 404)
+        except Exception as e:  # noqa: BLE001
+            log.exception("Fehler bei %s", self.path)
+            self._send(f"Fehler: {e}".encode(), "text/plain; charset=utf-8", 500)
+
+    def do_POST(self):  # noqa: N802
+        if not self._auth():
+            return
+        if not self._same_origin():
+            self._send("Abgelehnt: Anfrage kam nicht vom Dashboard".encode(), "text/plain; charset=utf-8", 403)
+            return
+        u = urllib.parse.urlparse(self.path)
+        n = int(self.headers.get("Content-Length", 0))
+        form = {k: v[0] for k, v in urllib.parse.parse_qs(self.rfile.read(n).decode()).items()}
+        try:
+            if u.path == "/abgaenge":
+                d = date.fromisoformat(form["datum"])
+                t = dtime.fromisoformat(form.get("uhrzeit") or "12:00")
+                ts = int(datetime.combine(d, t, tzinfo=CFG.tz).timestamp())
+                amount = int((parse_dec(form["menge"]) * ledger.PICO).to_integral_value())
+                if amount <= 0:
+                    raise ValueError("Menge muss größer als 0 sein")
+                kind = form.get("art", "sale")
+                if kind not in ("sale", "spend", "own"):
+                    raise ValueError("ungültige Art")
+                proceeds = None
+                if kind != "own":
+                    if not form.get("erloes"):
+                        raise ValueError("Bei Verkauf/Tausch/Bezahlung bitte den Erlös in EUR angeben")
+                    proceeds = str(parse_dec(form["erloes"]))
+                with db.write_lock:
+                    c = db.get()
+                    c.execute("INSERT INTO disposals(ts, amount, kind, proceeds_eur, txid, note, created) "
+                              "VALUES(?,?,?,?,?,?,?)",
+                              (ts, amount, kind, proceeds, form.get("txid", "").strip(),
+                               form.get("notiz", "").strip(), db.now()))
+                    c.commit()
+                self._redirect("/abgaenge")
+            elif u.path == "/abgaenge/loeschen":
+                with db.write_lock:
+                    c = db.get()
+                    c.execute("DELETE FROM disposals WHERE id=?", (int(form["id"]),))
+                    c.commit()
+                self._redirect("/abgaenge")
+            else:
+                self._send(b"Nicht gefunden", "text/plain; charset=utf-8", 404)
+        except (KeyError, ValueError, InvalidOperation) as e:
+            self._send(p_disposals({}, msg=f"Nicht gespeichert: {e}").encode(), status=400)
+
+
+def serve(cfg: Config, stop) -> ThreadingHTTPServer:
+    global CFG
+    CFG = cfg
+    srv = ThreadingHTTPServer(("0.0.0.0", cfg.web_port), Handler)
+    log.info("Dashboard auf Port %s", cfg.web_port)
+    return srv

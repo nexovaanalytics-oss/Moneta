@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 🔒 Report a security vulnerability
+    url: https://github.com/nexovaanalytics-oss/Moneta/security/advisories/new
+    about: Please report vulnerabilities privately, not in public issues.
+  - name: 💬 Questions and ideas
+    url: https://github.com/nexovaanalytics-oss/Moneta/discussions
+    about: Ask questions, share your setup, discuss ideas – in English, Deutsch, Français or Español.

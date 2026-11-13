@@ -45,6 +45,12 @@ After changes: `sudo docker restart xmr-ledger`.
 
 `/health` answers `ok` without a password (Docker healthcheck).
 
+**Refresh:** While the tab is open, the overview fetches new values every 30 s without reloading the page
+(`/api/live`, JSON, same login; paused in a background tab). Next to the year it shows how old the last fetch is,
+or "Verbindung verloren" (connection lost). Without JavaScript the overview reloads every 2 minutes. The ledger
+collects the data itself in the background: machines every `poll_seconds` (default 60 s), wallet every 120 s,
+price history every 10 minutes.
+
 ## Usage
 
 - **Outflows:** a view-only wallet cannot see outgoing transfers. Record every transfer: amount = amount sent to

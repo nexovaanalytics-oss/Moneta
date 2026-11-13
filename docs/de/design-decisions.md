@@ -23,8 +23,8 @@ in `.env` (`LEDGER_VERSION`), kein Auto-Update. Jeder Excel-Bericht nennt die er
 
 ### D-05 · 13.11.2026 – Kurse lokal aus 5-Minuten-Historie
 Abfragen „Kurs um Zeitpunkt X“ würden dem Kursanbieter die Auszahlungszeitpunkte verraten; zusammen mit der
-öffentlichen P2Pool-Adresse wäre die IP der Mining-Adresse zuordenbar. Daher werden alle 30 Minuten die
-letzten 24 h geladen und lokal gespeichert; die Zuordnung erfolgt lokal (max. 15 Min. Abstand). Tageskurs nur
+öffentlichen P2Pool-Adresse wäre die IP der Mining-Adresse zuordenbar. Daher werden in festem Abstand (derzeit alle
+10 Minuten) die letzten 24 h geladen und lokal gespeichert; die Zuordnung erfolgt lokal (max. 15 Min. Abstand). Tageskurs nur
 als Rückfall – übermittelt wird dann nur das Datum.
 
 ### D-04 · 11.11.2026 – Stromkosten = gemessener Mehrverbrauch × protokollierte Mining-Zeit

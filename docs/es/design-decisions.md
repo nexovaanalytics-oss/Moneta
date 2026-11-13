@@ -26,7 +26,7 @@ GitHub Actions prueba y construye `ghcr.io/nexovaanalytics-oss/xmr-ledger`. En e
 ### D-05 · 13/11/2026 – Cotizaciones asignadas localmente desde un historial de 5 minutos
 Consultas del tipo "cotización en el momento X" revelarían al proveedor de cotizaciones los momentos de pago;
 junto con la dirección pública de P2Pool, la IP podría vincularse a la dirección de minería. Por eso se descargan
-cada 30 minutos las últimas 24 h y se guardan localmente; la asignación se hace en local (máx. 15 min de
+a intervalos fijos (actualmente cada 10 minutos) las últimas 24 h y se guardan localmente; la asignación se hace en local (máx. 15 min de
 diferencia). La cotización diaria es solo un respaldo, y en ese caso solo se transmite la fecha.
 
 ### D-04 · 11/11/2026 – Coste eléctrico = consumo adicional medido × tiempo de minería registrado

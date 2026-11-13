@@ -38,7 +38,7 @@ XMRig-API (Rechner) ──────▶ miners.py ──▶ power_daily / powe
 
 wallet-rpc ──────────────▶ walletsync.py ──▶ inflows  (Coinbase = Mining-Zufluss, sonst "sonstiger Zugang")
                                                 │
-CoinGecko (alle 30 Min.,  ──▶ prices.py ──▶ price_points ──▶ Kurs je Zufluss (nächster 5-Min.-Wert,
+CoinGecko (alle 10 Min.,  ──▶ prices.py ──▶ price_points ──▶ Kurs je Zufluss (nächster 5-Min.-Wert,
  letzte 24 h, ohne Bezug                                      sonst Tageskurs, sonst manuell)
  zu Auszahlungen)
 

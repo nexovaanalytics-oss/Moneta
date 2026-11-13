@@ -46,6 +46,12 @@ Tras cambios: `sudo docker restart xmr-ledger`.
 
 `/health` responde `ok` sin contraseña (healthcheck de Docker).
 
+**Actualización:** mientras la pestaña está abierta, el resumen obtiene valores nuevos cada 30 s sin recargar la
+página (`/api/live`, JSON, mismo inicio de sesión; en pausa en una pestaña en segundo plano). Junto al año indica
+la antigüedad de la última consulta, o «Verbindung verloren» (conexión perdida). Sin JavaScript, el resumen se
+recarga cada 2 minutos. Los datos los recoge el propio ledger en segundo plano: equipos cada `poll_seconds`
+(60 s por defecto), billetera cada 120 s, historial de cotizaciones cada 10 minutos.
+
 ## Uso
 
 - **Salidas:** una billetera de solo lectura no ve las transferencias salientes. Registra cada transferencia:

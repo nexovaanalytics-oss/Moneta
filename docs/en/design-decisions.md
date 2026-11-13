@@ -24,8 +24,8 @@ GitHub Actions tests and builds `ghcr.io/nexovaanalytics-oss/xmr-ledger`. On the
 
 ### D-05 · 2026-11-13 – Prices matched locally from a 5-minute history
 Queries like "price at time X" would reveal payout times to the price provider; combined with the public P2Pool
-address, the IP address could be linked to the mining address. Therefore the last 24 h are fetched every 30
-minutes and stored locally; matching happens locally (max. 15 min apart). The daily price is only a fallback –
+address, the IP address could be linked to the mining address. Therefore the last 24 h are fetched at a fixed interval
+(currently every 10 minutes) and stored locally; matching happens locally (max. 15 min apart). The daily price is only a fallback –
 in that case only the date is transmitted.
 
 ### D-04 · 2026-11-11 – Electricity cost = measured extra power × logged mining time

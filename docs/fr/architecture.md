@@ -38,7 +38,7 @@ API XMRig (ordinateurs) ──▶ miners.py ──▶ power_daily / power_sample
 
 wallet-rpc ──────────────▶ walletsync.py ──▶ inflows  (coinbase = entrée de minage, sinon « autre entrée »)
                                                 │
-CoinGecko (toutes les 30 min, ──▶ prices.py ──▶ price_points ──▶ cours par entrée (valeur 5 min la plus
+CoinGecko (toutes les 10 min, ──▶ prices.py ──▶ price_points ──▶ cours par entrée (valeur 5 min la plus
  dernières 24 h, sans lien                                       proche, sinon cours du jour, sinon manuel)
  avec les paiements)
 

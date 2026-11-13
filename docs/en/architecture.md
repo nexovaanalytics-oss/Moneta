@@ -38,7 +38,7 @@ XMRig API (computers) ────▶ miners.py ──▶ power_daily / power_sa
 
 wallet-rpc ──────────────▶ walletsync.py ──▶ inflows  (coinbase = mining inflow, otherwise "other receipt")
                                                 │
-CoinGecko (every 30 min,  ──▶ prices.py ──▶ price_points ──▶ price per inflow (nearest 5-min value,
+CoinGecko (every 10 min,  ──▶ prices.py ──▶ price_points ──▶ price per inflow (nearest 5-min value,
  last 24 h, unrelated                                         else daily price, else manual)
  to payouts)
 

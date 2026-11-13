@@ -5,6 +5,14 @@ Contributors: add user-facing changes under "Unreleased".
 
 ## Unreleased
 
+**ledger**
+- Dashboard overview updates live: every 30 s via the new read-only endpoint `GET /api/live` (JSON, same Basic
+  Auth) without reloading the page; paused while the tab is hidden; status shows the age of the last fetch or
+  "connection lost". The full-page reload every 2 minutes remains as a fallback without JavaScript.
+- The current XMR price card shows the time of the price point ("Stand HH:MM").
+- Price history (last 24 h, 5-minute points) is fetched every 10 min instead of every 30 min. Still a fixed
+  interval without reference to payouts; price matching per inflow is unchanged.
+
 ## project – 2026-11-13: first public release
 
 - Published under EUPL-1.2.

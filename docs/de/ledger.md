@@ -42,6 +42,12 @@ Nach Änderungen: `sudo docker restart xmr-ledger`.
 
 `/health` antwortet ohne Passwort mit `ok` (Docker-Healthcheck).
 
+**Aktualisierung:** Die Übersicht holt bei geöffnetem Tab alle 30 s neue Werte, ohne die Seite neu zu laden
+(`/api/live`, JSON, gleiche Anmeldung; pausiert im Hintergrund-Tab). Oben neben dem Jahr steht, wie alt der
+letzte Abruf ist, bzw. „Verbindung verloren“. Ohne JavaScript lädt die Übersicht alle 2 Minuten neu. Die Daten
+selbst holt der Ledger im Hintergrund: Rechner alle `poll_seconds` (Standard 60 s), Wallet alle 120 s,
+Kurshistorie alle 10 Minuten.
+
 ## Bedienung
 
 - **Abgänge:** Die Nur-Lesen-Wallet sieht keine Ausgänge. Jede Überweisung erfassen: Menge = an andere

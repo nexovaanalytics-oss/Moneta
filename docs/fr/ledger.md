@@ -46,6 +46,13 @@ Après une modification : `sudo docker restart xmr-ledger`.
 
 `/health` répond `ok` sans mot de passe (healthcheck Docker).
 
+**Actualisation :** tant que l'onglet est ouvert, la vue d'ensemble récupère de nouvelles valeurs toutes les
+30 s sans recharger la page (`/api/live`, JSON, même identification ; en pause dans un onglet en arrière-plan).
+À côté de l'année, elle indique l'âge de la dernière récupération, ou « Verbindung verloren » (connexion perdue).
+Sans JavaScript, la vue d'ensemble se recharge toutes les 2 minutes. Les données elles-mêmes sont collectées par
+le ledger en arrière-plan : machines toutes les `poll_seconds` (60 s par défaut), portefeuille toutes les 120 s,
+historique des cours toutes les 10 minutes.
+
 ## Utilisation
 
 - **Sorties :** un portefeuille en lecture seule ne voit pas les transferts sortants. Saisissez chaque transfert :

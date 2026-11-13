@@ -269,6 +269,27 @@ watts = 11.0
         assert st == 200, (p, st, body[:300])
     assert b"Kursdaten: CoinGecko" in http("/")[1]
 
+    # Live-Update: Übersicht lädt per JavaScript nach, Meta-Refresh nur noch als Rückfall
+    assert prices.HISTORY_INTERVAL_S == 600
+    page_ = http("/")[1].decode()
+    assert "/api/live" in page_ and "data-live='cards'" in page_ and "data-live='devices'" in page_
+    assert '<noscript><meta http-equiv="refresh"' in page_
+    assert http("/api/live", with_auth=False)[0] == 401
+    assert http("/api/live?jahr=abc")[0] == 400
+    prices._now = time.time  # aktueller Kurspunkt (600 €) liegt eine Minute zurück
+    st, body = http("/api/live?jahr=2026")
+    assert st == 200, body[:300]
+    live = json.loads(body)
+    assert set(live["html"]) == {"warn", "cards", "sync", "devices", "recent"}
+    assert live["price"]["eur"] == "600.0000" and time.time() - live["price"]["ts"] < 120
+    assert "600,00 €" in live["html"]["cards"] and "Stand " in live["html"]["cards"]
+    assert live["wallet"]["height"] == 3900100 and live["wallet"]["error"] is None
+    mins = {m["name"]: m for m in live["miners"]}
+    assert mins["MacBook Pro M3 Pro"]["mining"] is True and mins["MacBook Air M1"]["reachable"] is False
+    assert "mint" in live["html"]["devices"] and "nicht erreichbar" in live["html"]["devices"]
+    assert "0,00030000" in live["html"]["recent"]  # Zufluss aa aus 2026
+    prices._now = lambda: ts(2028, 1, 1)
+
     # CSRF: POST von fremder Seite bzw. ohne Origin wird abgelehnt
     form = "datum=2027-06-01&uhrzeit=10:00&menge=0,0005&art=sale&erloes=310,00&txid=ff&notiz=Test".encode()
     assert http("/abgaenge", form, origin="http://evil.example")[0] == 403

@@ -36,9 +36,9 @@ After changes: `sudo docker restart xmr-ledger`.
 
 | Page | Content |
 |---|---|
-| **Übersicht** (overview) | Holdings, amount sellable tax-free, income/electricity/result for the year, device status, latest payouts, downloads |
+| **Übersicht** (overview) | Holdings, amount sellable tax-free, income/electricity/result for the year, device status with a total row (hashrate and extra power of all mining devices, incl. NAS if set), latest payouts, downloads |
 | **Zuflüsse** (inflows) | All payouts with price and price source; other receipts listed separately |
-| **Strom** (electricity) | Mining hours, avg. watts, kWh, avg. ct/kWh, cost per device and month |
+| **Strom** (electricity) | Mining hours, avg. watts, kWh, avg. ct/kWh, cost per device and month, plus totals across all devices (year and per month) |
 | **Lose** (lots) | FIFO lots with acquisition cost and **steuerfrei ab** (tax-free from) date |
 | **Abgänge** (outflows) | Record/delete transfers out of the mining wallet |
 | **Verkaufs-Rechner** (sale calculator) | Simulate a planned sale/exchange (nothing is stored) |

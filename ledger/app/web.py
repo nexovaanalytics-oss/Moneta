@@ -200,9 +200,25 @@ def _ov_devices(live) -> str:
         rows += (f"<tr><td>{esc(m.name)}</td><td>{state}</td>"
                  f"<td class='n'>{de(st['hashrate'], 0) if st else '–'} H/s</td>"
                  f"<td class='n'>{de(m.watts, 1)} W</td><td class='mut'>{tsfmt(st['ts']) if st else '–'}</td></tr>")
+    t = device_totals(live)
+    total = ""
+    if CFG.miners:
+        nas = f"inkl. NAS {de(CFG.nas_extra_watts, 1)} W" if CFG.nas_extra_watts > 0 else ""
+        total = (f"<tr style='font-weight:600;background:#f0f2f5'><td>Gesamt</td>"
+                 f"<td>{t['mining']} von {t['count']} minen</td>"
+                 f"<td class='n'>{de(t['hashrate'], 0)} H/s</td><td class='n'>{de(t['watts'], 1)} W</td>"
+                 f"<td class='mut' style='font-weight:400'>{nas}</td></tr>")
     return (f"<tr><th>Gerät</th><th>Status</th><th class='n'>Hashrate</th>"
             f"<th class='n'>Mehrverbrauch</th><th>letzte Abfrage</th></tr>"
-            f"{rows or '<tr><td colspan=5 class=mut>Keine Rechner in config.toml</td></tr>'}")
+            f"{rows or '<tr><td colspan=5 class=mut>Keine Rechner in config.toml</td></tr>'}{total}")
+
+
+def device_totals(live) -> dict:
+    """Summe über alle Rechner: Hashrate und Mehrverbrauch der gerade minenden Geräte (+ NAS, falls angesetzt)."""
+    active = [m for m in CFG.miners if (live.get(m.name) or {}).get("mining")]
+    return {"count": len(CFG.miners), "mining": len(active),
+            "hashrate": sum(live[m.name]["hashrate"] or 0.0 for m in active),
+            "watts": sum(m.watts for m in active) + max(CFG.nas_extra_watts, 0.0)}
 
 
 def _ov_recent(s) -> str:
@@ -234,6 +250,7 @@ def overview_live(year: int) -> dict:
                     "mining": (live.get(m.name) or {}).get("mining"),
                     "hashrate": (live.get(m.name) or {}).get("hashrate"),
                     "ts": (live.get(m.name) or {}).get("ts")} for m in CFG.miners],
+        "totals": device_totals(live),
         "html": {"warn": _ov_warn(s), "cards": _ov_cards(year, s, h, cur), "sync": _ov_sync(),
                  "devices": _ov_devices(live), "recent": _ov_recent(s)},
     }
@@ -288,13 +305,31 @@ def p_power(q) -> str:
     tot = ledger.power_by_device(CFG, year)
     tr2 = "".join(f"<tr><td>{esc(p['device'])}</td><td class='n'>{de((p['secs'] or 0) / 3600, 1)} h</td>"
                   f"<td class='n'>{de(p['kwh'], 3)}</td><td class='n'>{eurf(p['cost'])}</td></tr>" for p in tot)
+    sum_style = "style='font-weight:600;background:#f0f2f5'"
+    if tot:
+        tr2 += (f"<tr {sum_style}><td>Summe</td><td class='n'>{de(sum(p['secs'] or 0 for p in tot) / 3600, 1)} h</td>"
+                f"<td class='n'>{de(sum(p['kwh'] or 0 for p in tot), 3)}</td>"
+                f"<td class='n'>{eurf(sum(p['cost'] or 0 for p in tot))}</td></tr>")
+    months: dict[str, dict] = {}
+    for p in pm:
+        mo = months.setdefault(p["month"], {"secs": 0, "kwh": 0.0, "cost": 0.0})
+        mo["secs"] += p["secs"] or 0
+        mo["kwh"] += p["kwh"] or 0.0
+        mo["cost"] += p["cost"] or 0.0
+    tr3 = "".join(
+        f"<tr><td>{mo}</td><td class='n'>{de(v['secs'] / 3600, 1)} h</td><td class='n'>{de(v['kwh'], 3)}</td>"
+        f"<td class='n'>{de(v['cost'] / v['kwh'] * 100 if v['kwh'] else None, 2)} ct</td>"
+        f"<td class='n'>{eurf(v['cost'])}</td></tr>" for mo, v in months.items())
     tariffs = ", ".join(f"ab {t.valid_from.strftime('%d.%m.%Y')}: {de(t.ct_per_kwh)} ct/kWh" for t in CFG.tariffs)
     body = (f"<h1>Strom {year_select('/strom', year)}</h1>"
             f"<p class='mut'>Methode: gemessener Mehrverbrauch × protokollierte Mining-Zeit × Strompreis "
             f"({esc(tariffs)}). Abfrage alle {CFG.poll_seconds} s.</p>"
             f"<h2>Je Gerät</h2><table><tr><th>Gerät</th><th class='n'>Mining-Zeit</th><th class='n'>kWh</th>"
             f"<th class='n'>Kosten</th></tr>{tr2 or '<tr><td colspan=4 class=mut>noch keine Daten</td></tr>'}</table>"
-            f"<h2>Je Monat</h2><table><tr><th>Monat</th><th>Gerät</th><th class='n'>Mining-Zeit</th>"
+            f"<h2>Je Monat, alle Geräte</h2><table><tr><th>Monat</th><th class='n'>Mining-Zeit (Geräte-h)</th>"
+            f"<th class='n'>kWh</th><th class='n'>Ø Preis</th><th class='n'>Kosten</th></tr>"
+            f"{tr3 or '<tr><td colspan=5 class=mut>noch keine Daten</td></tr>'}</table>"
+            f"<h2>Je Monat und Gerät</h2><table><tr><th>Monat</th><th>Gerät</th><th class='n'>Mining-Zeit</th>"
             f"<th class='n'>Ø Hashrate</th><th class='n'>Ø Watt</th><th class='n'>kWh</th><th class='n'>Ø Preis</th>"
             f"<th class='n'>Kosten</th></tr>{tr or '<tr><td colspan=8 class=mut>noch keine Daten</td></tr>'}</table>")
     return page("/strom", "Strom", body)

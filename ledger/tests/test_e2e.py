@@ -288,6 +288,13 @@ watts = 11.0
     assert mins["MacBook Pro M3 Pro"]["mining"] is True and mins["MacBook Air M1"]["reachable"] is False
     assert "mint" in live["html"]["devices"] and "nicht erreichbar" in live["html"]["devices"]
     assert "0,00030000" in live["html"]["recent"]  # Zufluss aa aus 2026
+    # Summe über alle Geräte: nur der Pro mint (12 W) + NAS (4 W)
+    assert live["totals"]["count"] == 2 and live["totals"]["mining"] == 1
+    assert abs(live["totals"]["hashrate"] - 3806.2) < 1e-6 and live["totals"]["watts"] == 16.0
+    assert "Gesamt" in live["html"]["devices"] and "1 von 2 minen" in live["html"]["devices"]
+    assert "16,0 W" in live["html"]["devices"] and "inkl. NAS 4,0 W" in live["html"]["devices"]
+    strom = http(f"/strom?jahr={datetime.now(TZ).year}")[1].decode()
+    assert "Je Monat, alle Geräte" in strom and "<td>Summe</td>" in strom
     prices._now = lambda: ts(2028, 1, 1)
 
     # CSRF: POST von fremder Seite bzw. ohne Origin wird abgelehnt

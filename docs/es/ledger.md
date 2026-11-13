@@ -37,9 +37,9 @@ Tras cambios: `sudo docker restart xmr-ledger`.
 
 | Página | Contenido |
 |---|---|
-| **Übersicht** (resumen) | Saldo, importe vendible libre de impuestos, ingresos/electricidad/resultado del año, estado de los equipos, últimos pagos, descargas |
+| **Übersicht** (resumen) | Saldo, importe vendible libre de impuestos, ingresos/electricidad/resultado del año, estado de los equipos con fila de total (hashrate y consumo adicional de todos los equipos minando, incl. NAS si está configurado), últimos pagos, descargas |
 | **Zuflüsse** (entradas) | Todos los pagos con cotización y fuente; otras entradas por separado |
-| **Strom** (electricidad) | Horas de minería, vatios medios, kWh, ct/kWh medios, coste por equipo y mes |
+| **Strom** (electricidad) | Horas de minería, vatios medios, kWh, ct/kWh medios, coste por equipo y mes, más totales de todos los equipos (año y por mes) |
 | **Lose** (lotes) | Lotes FIFO con coste de adquisición y fecha **steuerfrei ab** (exento desde) |
 | **Abgänge** (salidas) | Registrar/borrar transferencias desde la billetera de minería |
 | **Verkaufs-Rechner** (calculadora de venta) | Simular una venta/permuta prevista (no se guarda nada) |

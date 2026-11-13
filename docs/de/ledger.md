@@ -33,9 +33,9 @@ Nach Änderungen: `sudo docker restart xmr-ledger`.
 
 | Seite | Inhalt |
 |---|---|
-| Übersicht | Bestand, steuerfrei veräußerbar, Einnahmen/Strom/Ergebnis des Jahres, Gerätestatus, letzte Auszahlungen, Downloads |
+| Übersicht | Bestand, steuerfrei veräußerbar, Einnahmen/Strom/Ergebnis des Jahres, Gerätestatus mit Gesamtzeile (Hashrate und Mehrverbrauch aller minenden Geräte, ggf. inkl. NAS), letzte Auszahlungen, Downloads |
 | Zuflüsse | alle Auszahlungen mit Kurs und Kursquelle; sonstige Zugänge separat |
-| Strom | Mining-Stunden, Ø Watt, kWh, Ø ct/kWh, Kosten je Gerät und Monat |
+| Strom | Mining-Stunden, Ø Watt, kWh, Ø ct/kWh, Kosten je Gerät und Monat, dazu Summen über alle Geräte (Jahr und je Monat) |
 | Lose | FIFO-Lose mit Anschaffungskosten und „steuerfrei ab“ |
 | Abgänge | Überweisungen aus der Mining-Wallet erfassen/löschen |
 | Verkaufs-Rechner | geplanten Verkauf/Tausch simulieren (nichts wird gespeichert) |

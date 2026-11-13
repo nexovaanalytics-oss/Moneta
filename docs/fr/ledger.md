@@ -37,9 +37,9 @@ Après une modification : `sudo docker restart xmr-ledger`.
 
 | Page | Contenu |
 |---|---|
-| **Übersicht** (vue d'ensemble) | Avoirs, montant cessible en franchise d'impôt, revenus/électricité/résultat de l'année, état des appareils, derniers paiements, téléchargements |
+| **Übersicht** (vue d'ensemble) | Avoirs, montant cessible en franchise d'impôt, revenus/électricité/résultat de l'année, état des appareils avec ligne de total (hashrate et surconsommation de tous les appareils en minage, NAS compris si défini), derniers paiements, téléchargements |
 | **Zuflüsse** (entrées) | Tous les paiements avec cours et source du cours ; autres entrées listées à part |
-| **Strom** (électricité) | Heures de minage, watts moyens, kWh, ct/kWh moyens, coût par appareil et par mois |
+| **Strom** (électricité) | Heures de minage, watts moyens, kWh, ct/kWh moyens, coût par appareil et par mois, plus totaux pour tous les appareils (année et par mois) |
 | **Lose** (lots) | Lots FIFO avec coût d'acquisition et date **steuerfrei ab** (exonéré à partir du) |
 | **Abgänge** (sorties) | Saisir/supprimer les transferts sortant du portefeuille de minage |
 | **Verkaufs-Rechner** (calculateur de vente) | Simuler une vente/un échange prévu (rien n'est enregistré) |

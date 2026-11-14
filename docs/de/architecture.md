@@ -18,12 +18,12 @@
 | Port | Dienst | Erreichbar |
 |---|---|---|
 | 18080/tcp | monerod P2P | Internet ausgehend; eingehend nur bei Portfreigabe (optional) |
-| 18089/tcp | monerod eingeschränkter RPC | LAN (Wallets, P2Pool, wallet-rpc) |
+| 18089/tcp | monerod eingeschränkter RPC | LAN (Wallets, P2Pool, wallet-rpc, Ledger) |
 | 18084/tcp | monerod ZMQ | nur Docker-intern |
 | 3333/tcp | P2Pool Stratum | LAN (Miner) |
 | 37888/tcp | P2Pool P2P (mini) | Internet ausgehend |
 | 18082/tcp | wallet-rpc | nur Docker-intern, kein veröffentlichter Port |
-| 8090/tcp | Ledger-Dashboard | LAN, Basic Auth |
+| 8090/tcp | Ledger-Dashboard | LAN, Basic Auth; `/api/moneta`, `/api/pair`, `/api/heartbeat` ohne Passwort (nur Kopplungscode bzw. Geräte-Token) |
 | 18000/tcp | XMRig-API auf den Rechnern | LAN, Bearer-Token, nur lesend |
 
 Stratum, RPC und Dashboard **nie** per Portfreigabe ins Internet stellen. Bei aktiver Firewall auf der NAS
@@ -35,10 +35,14 @@ Stratum, RPC und Dashboard **nie** per Portfreigabe ins Internet stellen. Bei ak
                  alle 60 s                         alle 120 s
 XMRig-API (Rechner) ──────▶ miners.py ──▶ power_daily / power_samples
                                          (Mining-Zeit × Watt × Tarif, festgeschrieben)
+                                         + activity_hourly (Stundenwerte, nur Auswertung)
+monerod (eigener Node, stündlich) ──▶ network.py ──▶ network_samples (Difficulty, Blockbelohnung)
+
+Rechner (Kopplung) ──▶ /api/pair, /api/heartbeat ──▶ devices, device_watts (Freigabe und Watt im Dashboard)
 
 wallet-rpc ──────────────▶ walletsync.py ──▶ inflows  (Coinbase = Mining-Zufluss, sonst "sonstiger Zugang")
                                                 │
-CoinGecko (alle 30 Min.,  ──▶ prices.py ──▶ price_points ──▶ Kurs je Zufluss (nächster 5-Min.-Wert,
+CoinGecko (alle 10 Min.,  ──▶ prices.py ──▶ price_points ──▶ Kurs je Zufluss (nächster 5-Min.-Wert,
  letzte 24 h, ohne Bezug                                      sonst Tageskurs, sonst manuell)
  zu Auszahlungen)
 

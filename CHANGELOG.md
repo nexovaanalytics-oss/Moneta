@@ -5,6 +5,18 @@ Contributors: add user-facing changes under "Unreleased".
 
 ## Unreleased
 
+**ledger**
+- Pair new computers from the dashboard (new page "Geräte"): generate a 6-digit code (10 min, single use, invalid
+  after five failed attempts); the computer registers via `POST /api/pair` and is only polled after approval with a
+  measured extra power draw and note. Watts per paired computer are kept as a history (`valid_from`, never
+  overwritten; new value applies from now on); computers can be retired. `[[miner]]` in `config.toml` still works.
+- `GET /api/moneta` (no password, no sensitive data): lets installers find the ledger in the LAN and returns the
+  stratum address (`[pool] stratum_host`, `stratum_port`; `pairing` switches pairing off).
+- `POST /api/heartbeat` (device token): paired computers report a changed IP and their thread setting.
+- The device list (overview, `/api/live`, polling) is now read live from `config.toml` plus the database – no
+  restart after pairing. The Excel sheet "Geräte" shows the watt history with "gültig ab" and the source.
+- DB schema v4 (additive: `devices`, `device_watts`).
+
 **deploy/mac**
 - New installer `deploy/mac/install.sh`: installs Homebrew and XMRig if needed, asks for pool address and threads,
   creates or takes over the API token, sets up XMRig as launchd agent `moneta.xmrig` (log, restart after a crash,
@@ -43,6 +55,27 @@ Contributors: add user-facing changes under "Unreleased".
   `~/.config/moneta/einmessung.json` (used by installer and pairing).
 - Fix: the docs and installer claimed the Homebrew build donates 0 %; like all official XMRig builds it donates at
   least 1 % (`--donate-level 0` is ignored). Corrected in `setup-mac.md` and D-09.
+
+## ledger 1.2.0 – 2026-11-14
+
+- Dashboard overview updates live: every 30 s via the new read-only endpoint `GET /api/live` (JSON, same Basic
+  Auth) without reloading the page; paused while the tab is hidden; status shows the age of the last fetch or
+  "connection lost". The full-page reload every 2 minutes remains as a fallback without JavaScript.
+- Totals across all devices: the device table on the overview gets a "Gesamt" row (devices mining, combined
+  hashrate, combined extra power of the mining devices incl. NAS if configured; also in `/api/live` as
+  `totals`); the electricity page gets a sum row per device and a new table "Je Monat, alle Geräte".
+- New page **Auswertung** (analysis) for any time range (presets: last night, 24 h, 7/30 days, month, year, or
+  from–to): per device time mining/paused/unreachable with a timeline, avg./max. hashrate, hashes, kWh and cost;
+  expected value (hashes ÷ difficulty × block reward) compared with the actual payouts; per-day table; CSV export.
+  Display only – the report and tax figures still come from the inflows and electricity pages.
+- New table `activity_hourly` (DB schema v3, additive): hourly values per device, kept indefinitely, because
+  per-minute values are deleted after 30 days. Existing per-minute values are copied over once on first start.
+- New table `network_samples`: difficulty and block reward, one value per hour, from your own node's restricted
+  RPC (`[node] rpc_url`, default `http://monerod:18089/json_rpc`; empty disables it). Missing hours are fetched
+  once from block headers. No external requests.
+- The current XMR price card shows the time of the price point ("Stand HH:MM").
+- Price history (last 24 h, 5-minute points) is fetched every 10 min instead of every 30 min. Still a fixed
+  interval without reference to payouts; price matching per inflow is unchanged.
 
 ## project – 2026-11-13: first public release
 

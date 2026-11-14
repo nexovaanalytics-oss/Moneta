@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 import base64
+import csv
 import hmac
 import html
+import io
+import json
 import logging
 import urllib.parse
-from datetime import date, datetime, time as dtime
+from datetime import date, datetime, time as dtime, timedelta
 from decimal import Decimal, InvalidOperation
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import activity
 import db
+import devices
 import ledger
 import miners
 import prices
@@ -85,13 +90,15 @@ button,.btn{font:inherit;background:var(--acc);color:#fff;border:0;border-radius
 button.sec{background:#eef0f3;color:var(--ink)}footer{margin-top:40px;color:var(--mut);font-size:12px}.note{background:#fff8e6;border:1px solid #f5d77a;border-radius:10px;padding:10px 14px;font-size:13.5px}
 """
 
-NAV = [("/", "Übersicht"), ("/zufluesse", "Zuflüsse"), ("/strom", "Strom"), ("/lose", "Lose"),
-       ("/abgaenge", "Abgänge"), ("/rechner", "Verkaufs-Rechner")]
+NAV = [("/", "Übersicht"), ("/zufluesse", "Zuflüsse"), ("/strom", "Strom"), ("/auswertung", "Auswertung"),
+       ("/lose", "Lose"),
+       ("/abgaenge", "Abgänge"), ("/rechner", "Verkaufs-Rechner"), ("/geraete", "Geräte")]
 
 
 def page(path: str, title: str, body: str, refresh: int | None = None) -> str:
     nav = "".join(f'<a href="{h}" class="{"on" if h == path else ""}">{esc(t)}</a>' for h, t in NAV)
-    meta = f'<meta http-equiv="refresh" content="{refresh}">' if refresh else ""
+    # Rückfall ohne JavaScript; mit JavaScript aktualisiert /api/live die Übersicht ohne Neuladen.
+    meta = f'<noscript><meta http-equiv="refresh" content="{refresh}"></noscript>' if refresh else ""
     return (f'<!doctype html><html lang="de"><head><meta charset="utf-8">'
             f'<meta name="viewport" content="width=device-width,initial-scale=1">{meta}'
             f'<title>{esc(title)} – XMR-Ledger</title><style>{CSS}</style></head><body>'
@@ -112,27 +119,54 @@ def year_select(path: str, year: int) -> str:
 
 
 # ---------- Seiten ----------
-def p_overview(q) -> str:
-    year = int(q.get("jahr", [datetime.now(CFG.tz).year])[0])
-    s = ledger.year_summary(CFG, year)
-    h = ledger.holdings(CFG)
-    cur = prices.current_price(CFG)
-    value_now = None if cur is None else ledger.xmr(h["remaining"]) * cur
+LIVE_SECONDS = 30  # Abfrageintervall des Browsers für /api/live
 
-    werr = db.get_meta("wallet_error") or ""
-    wsync = db.get_meta("wallet_last_sync")
-    wheight = db.get_meta("wallet_height")
-    sync_state = (f'<span class="pill bad">Fehler</span> <span class="mut">{esc(werr)}</span>' if werr else
-                  f'<span class="pill ok">OK</span> Block {de(int(wheight), 0) if wheight else "–"}, '
-                  f'zuletzt {tsfmt(wsync)}' if wsync else '<span class="pill mut">noch kein Abgleich</span>')
+LIVE_JS = """
+(function(){
+  var ms=%d, url='/api/live'+location.search, last=Date.now(), ok=true, busy=false, timer=null;
+  var st=document.getElementById('live-state');
+  function show(){
+    var s=Math.round((Date.now()-last)/1000);
+    st.className='pill '+(ok?'ok':'bad');
+    st.textContent=(ok?'live':'Verbindung verloren')+' · Stand vor '+(s<60?s+' s':Math.round(s/60)+' Min.');
+  }
+  function tick(){
+    if(busy)return; busy=true;
+    var ac=new AbortController(), to=setTimeout(function(){ac.abort();},10000);
+    fetch(url,{credentials:'same-origin',cache:'no-store',signal:ac.signal})
+      .then(function(r){if(!r.ok)throw new Error(r.status);return r.json();})
+      .then(function(d){
+        Object.keys(d.html).forEach(function(k){
+          var el=document.querySelector('[data-live="'+k+'"]'); if(el)el.innerHTML=d.html[k];
+        });
+        last=Date.now(); ok=true;
+      })
+      .catch(function(){ok=false;})
+      .then(function(){clearTimeout(to); busy=false; show();});
+  }
+  function start(){if(!timer){tick(); timer=setInterval(tick,ms);}}
+  function stop(){clearInterval(timer); timer=null;}
+  document.addEventListener('visibilitychange',function(){document.hidden?stop():start();});
+  setInterval(show,5000); show();
+  if(!document.hidden)timer=setInterval(tick,ms);
+})();
+"""
 
+
+def _ov_warn(s) -> str:
+    if not s["missing_prices"]:
+        return ""
+    return (f'<p class="note">{s["missing_prices"]} Zufluss/Zuflüsse ohne Kurs – wird automatisch nachgeholt; '
+            f'sonst in <span class="mono">kurse_manuell.csv</span> eintragen.</p>')
+
+
+def _ov_cards(year: int, s, h, cur) -> str:
+    price, price_ts = cur if cur else (None, None)
+    value_now = None if price is None else ledger.xmr(h["remaining"]) * price
     fg = ('<span class="pill ok">unter 256 €</span>' if s["under_freigrenze_22"]
           else '<span class="pill warn">über 256 €</span>')
-    warn = (f'<p class="note">{s["missing_prices"]} Zufluss/Zuflüsse ohne Kurs – wird automatisch nachgeholt; '
-            f'sonst in <span class="mono">kurse_manuell.csv</span> eintragen.</p>') if s["missing_prices"] else ""
-
-    cards = f"""
-    <div class="grid">
+    stand = f"Stand {datetime.fromtimestamp(price_ts, CFG.tz).strftime('%H:%M')}" if price_ts else "kein aktueller Kurs"
+    return f"""
       <div class="card"><div class="k">Bestand (Mining-Lose)</div><div class="v">{xmrf(h['remaining'])} XMR</div>
         <div class="s">aktuell ≈ {eurf(None if value_now is None else ledger.eur(value_now))} · AK {eurf(h['cost'])}</div></div>
       <div class="card"><div class="k">davon steuerfrei veräußerbar</div><div class="v">{xmrf(h['free_now'])} XMR</div>
@@ -143,13 +177,23 @@ def p_overview(q) -> str:
         <div class="s">{de(s['power_kwh'], 1)} kWh</div></div>
       <div class="card"><div class="k">Ergebnis {year} (Einnahmen − Strom)</div><div class="v">{eurf(s['result'])}</div>
         <div class="s">Freigrenze: {fg}</div></div>
-      <div class="card"><div class="k">XMR-Kurs aktuell</div><div class="v">{eurf(cur)}</div>
-        <div class="s">CoinGecko, lokal gespeichert</div></div>
-    </div>"""
+      <div class="card"><div class="k">XMR-Kurs aktuell</div><div class="v">{eurf(price)}</div>
+        <div class="s">CoinGecko, {stand}</div></div>"""
 
-    live = miners.live_status()
+
+def _ov_sync() -> str:
+    werr = db.get_meta("wallet_error") or ""
+    wsync = db.get_meta("wallet_last_sync")
+    wheight = db.get_meta("wallet_height")
+    return (f'<span class="pill bad">Fehler</span> <span class="mut">{esc(werr)}</span>' if werr else
+            f'<span class="pill ok">OK</span> Block {de(int(wheight), 0) if wheight else "–"}, '
+            f'zuletzt {tsfmt(wsync)}' if wsync else '<span class="pill mut">noch kein Abgleich</span>')
+
+
+def _ov_devices(live, ms=None) -> str:
+    ms = miners.current(CFG) if ms is None else ms
     rows = ""
-    for m in CFG.miners:
+    for m in ms:
         st = live.get(m.name)
         if not st:
             state = '<span class="pill mut">noch keine Abfrage</span>'
@@ -162,23 +206,86 @@ def p_overview(q) -> str:
         rows += (f"<tr><td>{esc(m.name)}</td><td>{state}</td>"
                  f"<td class='n'>{de(st['hashrate'], 0) if st else '–'} H/s</td>"
                  f"<td class='n'>{de(m.watts, 1)} W</td><td class='mut'>{tsfmt(st['ts']) if st else '–'}</td></tr>")
-    devices = (f"<h2>Geräte</h2><table><tr><th>Gerät</th><th>Status</th><th class='n'>Hashrate</th>"
-               f"<th class='n'>Mehrverbrauch</th><th>letzte Abfrage</th></tr>{rows or '<tr><td colspan=5 class=mut>Keine Rechner in config.toml</td></tr>'}</table>")
+    t = device_totals(live, ms)
+    total = ""
+    if ms:
+        nas = f"inkl. NAS {de(CFG.nas_extra_watts, 1)} W" if CFG.nas_extra_watts > 0 else ""
+        total = (f"<tr style='font-weight:600;background:#f0f2f5'><td>Gesamt</td>"
+                 f"<td>{t['mining']} von {t['count']} minen</td>"
+                 f"<td class='n'>{de(t['hashrate'], 0)} H/s</td><td class='n'>{de(t['watts'], 1)} W</td>"
+                 f"<td class='mut' style='font-weight:400'>{nas}</td></tr>")
+    return (f"<tr><th>Gerät</th><th>Status</th><th class='n'>Hashrate</th>"
+            f"<th class='n'>Mehrverbrauch</th><th>letzte Abfrage</th></tr>"
+            f"{rows or '<tr><td colspan=5 class=mut>Noch keine Rechner – unter <a href="/geraete">Geräte</a> koppeln</td></tr>'}{total}")
 
+
+def device_totals(live, ms=None) -> dict:
+    """Summe über alle Rechner: Hashrate und Mehrverbrauch der gerade minenden Geräte (+ NAS, falls angesetzt)."""
+    ms = miners.current(CFG) if ms is None else ms
+    active = [m for m in ms if (live.get(m.name) or {}).get("mining")]
+    return {"count": len(ms), "mining": len(active),
+            "hashrate": sum(live[m.name]["hashrate"] or 0.0 for m in active),
+            "watts": sum(m.watts for m in active) + max(CFG.nas_extra_watts, 0.0)}
+
+
+def _ov_recent(s) -> str:
     last = s["inflows"][-12:][::-1]
     inrows = "".join(
         f"<tr><td>{x['dt'].strftime('%d.%m.%Y %H:%M')}</td><td class='n'>{x['height']}</td>"
         f"<td class='n'>{xmrf(x['amount'], 8)}</td><td class='n'>{eurf(x['price'])}</td>"
         f"<td class='n'>{eurf(None if x['value'] is None else ledger.eur(x['value']))}</td></tr>" for x in last)
-    recent = (f"<h2>Letzte Auszahlungen</h2><table><tr><th>Zeit</th><th class='n'>Block</th><th class='n'>XMR</th>"
-              f"<th class='n'>Kurs</th><th class='n'>Wert</th></tr>"
-              f"{inrows or '<tr><td colspan=5 class=mut>Noch keine Auszahlungen</td></tr>'}</table>")
+    return (f"<tr><th>Zeit</th><th class='n'>Block</th><th class='n'>XMR</th>"
+            f"<th class='n'>Kurs</th><th class='n'>Wert</th></tr>"
+            f"{inrows or '<tr><td colspan=5 class=mut>Noch keine Auszahlungen</td></tr>'}")
 
-    body = (f"<h1>Übersicht {year_select('/', year)}</h1>{warn}{cards}"
-            f"<h2>Wallet-Abgleich</h2><p>{sync_state}</p>{devices}{recent}"
+
+def overview_live(year: int) -> dict:
+    """Daten der Übersicht für das Live-Update (/api/live): Rohwerte plus fertige HTML-Teile."""
+    s = ledger.year_summary(CFG, year)
+    h = ledger.holdings(CFG)
+    cur = prices.current_price_point(CFG)
+    live = miners.live_status()
+    ms = miners.current(CFG)
+    wh = db.get_meta("wallet_height")
+    ws = db.get_meta("wallet_last_sync")
+    return {
+        "now": int(datetime.now(CFG.tz).timestamp()),
+        "version": version.label(),
+        "price": None if cur is None else {"eur": str(cur[0]), "ts": cur[1]},
+        "wallet": {"height": int(wh) if wh else None, "last_sync": int(float(ws)) if ws else None,
+                   "error": db.get_meta("wallet_error") or None},
+        "miners": [{"name": m.name, "reachable": (live.get(m.name) or {}).get("reachable"),
+                    "mining": (live.get(m.name) or {}).get("mining"),
+                    "hashrate": (live.get(m.name) or {}).get("hashrate"),
+                    "ts": (live.get(m.name) or {}).get("ts")} for m in ms],
+        "totals": device_totals(live, ms),
+        "pending_devices": devices.pending_count(),
+        "html": {"warn": _ov_warn(s), "cards": _ov_cards(year, s, h, cur), "sync": _ov_sync(),
+                 "devices": _ov_devices(live, ms), "recent": _ov_recent(s)},
+    }
+
+
+def p_overview(q) -> str:
+    year = int(q.get("jahr", [datetime.now(CFG.tz).year])[0])
+    d = overview_live(year)["html"]
+    body = (f"<h1>Übersicht {year_select('/', year)} <span id='live-state' class='pill mut' "
+            f"style='vertical-align:middle'>Live-Update aus</span></h1>"
+            f"<div data-live='warn'>{d['warn']}</div><div class='grid' data-live='cards'>{d['cards']}</div>"
+            f"<h2>Wallet-Abgleich</h2><p data-live='sync'>{d['sync']}</p>"
+            f"<h2>Geräte</h2>{_ov_pending()}<table data-live='devices'>{d['devices']}</table>"
+            f"<h2>Letzte Auszahlungen</h2><table data-live='recent'>{d['recent']}</table>"
             f'<h2>Jahresbericht</h2><p><a class="btn" href="/bericht.xlsx?jahr={year}">Excel-Bericht {year}</a> '
-            f'<a class="btn" style="background:#475467" href="/zufluesse.csv?jahr={year}">Zuflüsse als CSV</a></p>')
+            f'<a class="btn" style="background:#475467" href="/zufluesse.csv?jahr={year}">Zuflüsse als CSV</a></p>'
+            f"<script>{LIVE_JS % (LIVE_SECONDS * 1000)}</script>")
     return page("/", "Übersicht", body, refresh=120)
+
+
+def _ov_pending() -> str:
+    n = devices.pending_count()
+    if not n:
+        return ""
+    return (f'<p class="note">{n} neue(r) Rechner wartet/warten auf Freigabe – '
+            f'<a href="/geraete">unter „Geräte“ prüfen und freigeben</a>.</p>')
 
 
 def p_inflows(q) -> str:
@@ -215,16 +322,229 @@ def p_power(q) -> str:
     tot = ledger.power_by_device(CFG, year)
     tr2 = "".join(f"<tr><td>{esc(p['device'])}</td><td class='n'>{de((p['secs'] or 0) / 3600, 1)} h</td>"
                   f"<td class='n'>{de(p['kwh'], 3)}</td><td class='n'>{eurf(p['cost'])}</td></tr>" for p in tot)
+    sum_style = "style='font-weight:600;background:#f0f2f5'"
+    if tot:
+        tr2 += (f"<tr {sum_style}><td>Summe</td><td class='n'>{de(sum(p['secs'] or 0 for p in tot) / 3600, 1)} h</td>"
+                f"<td class='n'>{de(sum(p['kwh'] or 0 for p in tot), 3)}</td>"
+                f"<td class='n'>{eurf(sum(p['cost'] or 0 for p in tot))}</td></tr>")
+    months: dict[str, dict] = {}
+    for p in pm:
+        mo = months.setdefault(p["month"], {"secs": 0, "kwh": 0.0, "cost": 0.0})
+        mo["secs"] += p["secs"] or 0
+        mo["kwh"] += p["kwh"] or 0.0
+        mo["cost"] += p["cost"] or 0.0
+    tr3 = "".join(
+        f"<tr><td>{mo}</td><td class='n'>{de(v['secs'] / 3600, 1)} h</td><td class='n'>{de(v['kwh'], 3)}</td>"
+        f"<td class='n'>{de(v['cost'] / v['kwh'] * 100 if v['kwh'] else None, 2)} ct</td>"
+        f"<td class='n'>{eurf(v['cost'])}</td></tr>" for mo, v in months.items())
     tariffs = ", ".join(f"ab {t.valid_from.strftime('%d.%m.%Y')}: {de(t.ct_per_kwh)} ct/kWh" for t in CFG.tariffs)
     body = (f"<h1>Strom {year_select('/strom', year)}</h1>"
             f"<p class='mut'>Methode: gemessener Mehrverbrauch × protokollierte Mining-Zeit × Strompreis "
             f"({esc(tariffs)}). Abfrage alle {CFG.poll_seconds} s.</p>"
             f"<h2>Je Gerät</h2><table><tr><th>Gerät</th><th class='n'>Mining-Zeit</th><th class='n'>kWh</th>"
             f"<th class='n'>Kosten</th></tr>{tr2 or '<tr><td colspan=4 class=mut>noch keine Daten</td></tr>'}</table>"
-            f"<h2>Je Monat</h2><table><tr><th>Monat</th><th>Gerät</th><th class='n'>Mining-Zeit</th>"
+            f"<h2>Je Monat, alle Geräte</h2><table><tr><th>Monat</th><th class='n'>Mining-Zeit (Geräte-h)</th>"
+            f"<th class='n'>kWh</th><th class='n'>Ø Preis</th><th class='n'>Kosten</th></tr>"
+            f"{tr3 or '<tr><td colspan=5 class=mut>noch keine Daten</td></tr>'}</table>"
+            f"<h2>Je Monat und Gerät</h2><table><tr><th>Monat</th><th>Gerät</th><th class='n'>Mining-Zeit</th>"
             f"<th class='n'>Ø Hashrate</th><th class='n'>Ø Watt</th><th class='n'>kWh</th><th class='n'>Ø Preis</th>"
             f"<th class='n'>Kosten</th></tr>{tr or '<tr><td colspan=8 class=mut>noch keine Daten</td></tr>'}</table>")
     return page("/strom", "Strom", body)
+
+
+# ---------- Auswertung ----------
+STATE_COLOR = {"mint": "var(--ok)", "pausiert": "#f5b971", "nicht erreichbar": "#d0d5dd"}
+
+
+def analysis_range(q) -> tuple[datetime, datetime, str]:
+    """Zeitraum aus ?zeitraum=<preset> oder ?von=…&bis=… (datetime-local, lokale Zeit)."""
+    von, bis = (q.get("von") or [""])[0], (q.get("bis") or [""])[0]
+    if von and bis:
+        start = datetime.fromisoformat(von).replace(tzinfo=CFG.tz)
+        end = datetime.fromisoformat(bis).replace(tzinfo=CFG.tz)
+        if end <= start:
+            raise ValueError("Ende muss nach dem Beginn liegen")
+        return start, end, ""
+    key = (q.get("zeitraum") or ["24h"])[0]
+    if key not in dict(activity.PRESETS):
+        raise ValueError("unbekannter Zeitraum")
+    start, end = activity.preset_range(CFG, key)
+    return start, end, key
+
+
+def _hm(secs) -> str:
+    return f"{de((secs or 0) / 3600, 2)} h"
+
+
+def _pct(part, whole) -> str:
+    return f"<span class='mut'>({de(100 * part / whole, 0)} %)</span>" if whole else ""
+
+
+def _xmr(v, digits=8) -> str:
+    return "–" if v is None else f"{de(v, digits)} XMR"
+
+
+def p_analysis(q) -> str:
+    try:
+        start, end, key = analysis_range(q)
+    except ValueError as e:
+        return page("/auswertung", "Auswertung", f"<h1>Auswertung</h1><p class='note'>Ungültiger Zeitraum: {esc(e)}</p>")
+    a = activity.analyse(CFG, start, end)
+    s_, e_ = a["start"], a["end"]
+    span = (e_ - s_).total_seconds()
+    t = a["total"]
+    fmt = "%Y-%m-%dT%H:%M"
+
+    presets = " ".join(
+        f'<a class="btn" style="{"" if k == key else "background:#eef0f3;color:var(--ink)"}" '
+        f'href="/auswertung?zeitraum={k}">{esc(lbl)}</a>' for k, lbl in activity.PRESETS)
+    form = (f'<form class="inline" method="get" action="/auswertung">'
+            f'<label>von<input type="datetime-local" name="von" value="{s_.strftime(fmt)}"></label>'
+            f'<label>bis<input type="datetime-local" name="bis" value="{e_.strftime(fmt)}"></label>'
+            f'<button>Auswerten</button>'
+            f'<a class="btn" style="background:#475467" href="/auswertung.csv?von={s_.strftime(fmt)}&bis={e_.strftime(fmt)}">CSV</a></form>')
+
+    luck = "" if a["luck"] is None else f" · {de(a['luck'] * 100, 0)} % des Erwartungswerts"
+    result = None if a["exp_eur"] is None else ledger.eur(a["exp_eur"]) - ledger.eur(Decimal(str(t["cost"])))
+    cards = f"""<div class="grid">
+      <div class="card"><div class="k">Mining-Zeit (alle Rechner)</div><div class="v">{_hm(t['mining_s'])}</div>
+        <div class="s">pausiert {_hm(t['paused_s'])} · nicht erreichbar {_hm(t['offline_s'])}</div></div>
+      <div class="card"><div class="k">Hashes</div><div class="v">{de(t['hashes'] / 1e6, 1)} Mio.</div>
+        <div class="s">zusammen Ø {de(t['hr_eff'], 0)} H/s über den ganzen Zeitraum</div></div>
+      <div class="card"><div class="k">Strom (inkl. NAS)</div><div class="v">{eurf(t['cost'])}</div>
+        <div class="s">{de(t['kwh'], 3)} kWh</div></div>
+      <div class="card"><div class="k">Rechnerischer Gegenwert</div><div class="v">{_xmr(t['exp_xmr'])}</div>
+        <div class="s">≈ {eurf(None if a['exp_eur'] is None else ledger.eur(a['exp_eur']))} (Ø Kurs {eurf(a['price'])})</div></div>
+      <div class="card"><div class="k">Ausgezahlt im Zeitraum</div><div class="v">{_xmr(a['paid_xmr'])}</div>
+        <div class="s">{len(a['payouts'])} {"Auszahlung" if len(a['payouts']) == 1 else "Auszahlungen"} · {eurf(ledger.eur(a['paid_eur']))}{luck}</div></div>
+      <div class="card"><div class="k">Gegenwert − Strom</div><div class="v">{eurf(result)}</div>
+        <div class="s">rechnerisch, ohne Glück/Pech bei Auszahlungen</div></div>
+    </div>"""
+
+    rows = ""
+    for dev, d in a["devices"].items():
+        polled = d["mining_s"] + d["paused_s"] + d["offline_s"]
+        if dev == activity.NAS_DEVICE:
+            rows += (f"<tr><td>{esc(dev)}</td><td colspan=6 class='mut'>Pauschale für Node + Pool</td>"
+                     f"<td class='n'>{de(d['kwh'], 3)}</td><td class='n'>{eurf(d['cost'])}</td><td></td></tr>")
+            continue
+        rows += (f"<tr><td>{esc(dev)}</td><td class='n'>{_hm(d['mining_s'])} {_pct(d['mining_s'], polled)}</td>"
+                 f"<td class='n'>{_hm(d['paused_s'])}</td><td class='n'>{_hm(d['offline_s'])}</td>"
+                 f"<td class='n'>{de(d['hr_avg'], 0)}</td><td class='n'>{de(d['hr_max'], 0)}</td>"
+                 f"<td class='n'>{de(d['hashes'] / 1e6, 1)}</td><td class='n'>{de(d['kwh'], 3)}</td>"
+                 f"<td class='n'>{eurf(d['cost'])}</td><td class='n'>{de(d['exp_xmr'], 8)}</td></tr>")
+    sum_style = "style='font-weight:600;background:#f0f2f5'"
+    polled = t["mining_s"] + t["paused_s"] + t["offline_s"]
+    if a["devices"]:
+        rows += (f"<tr {sum_style}><td>Gesamt</td><td class='n'>{_hm(t['mining_s'])} {_pct(t['mining_s'], polled)}</td>"
+                 f"<td class='n'>{_hm(t['paused_s'])}</td><td class='n'>{_hm(t['offline_s'])}</td>"
+                 f"<td class='n' title='zusammen, über den ganzen Zeitraum'>{de(t['hr_eff'], 0)}*</td><td class='n'>–</td>"
+                 f"<td class='n'>{de(t['hashes'] / 1e6, 1)}</td><td class='n'>{de(t['kwh'], 3)}</td>"
+                 f"<td class='n'>{eurf(t['cost'])}</td><td class='n'>{de(t['exp_xmr'], 8)}</td></tr>")
+    table = (f"<h2>Je Gerät</h2><div style='overflow-x:auto'><table><tr><th>Gerät</th><th class='n'>mint</th><th class='n'>pausiert</th>"
+             f"<th class='n'>nicht erreichbar</th><th class='n'>Ø H/s</th><th class='n'>max H/s</th>"
+             f"<th class='n'>Hashes (Mio.)</th><th class='n'>kWh</th><th class='n'>Kosten</th>"
+             f"<th class='n'>erwartet XMR</th></tr>"
+             f"{rows or '<tr><td colspan=10 class=mut>Keine Daten im Zeitraum</td></tr>'}</table></div>"
+             f"<p class='mut' style='font-size:12.5px'>Ø H/s je Gerät: während es mint. * Gesamt: alle Rechner "
+             f"zusammen, gemittelt über den ganzen Zeitraum.</p>")
+
+    timeline = ""
+    if a["segments"]:
+        legend = " ".join(f"<span class='pill' style='background:{c};color:{'#fff' if st == 'mint' else 'var(--ink)'}'>"
+                          f"{st}</span>" for st, c in STATE_COLOR.items())
+        timeline = f"<h2>Zeitleiste</h2><p class='mut'>{legend} · weiß = keine Abfrage</p>"
+        for dev, segs in sorted(a["segments"].items()):
+            if dev == activity.NAS_DEVICE:
+                continue
+            bars, lst = "", ""
+            for st, a0, b0, iv, hs in segs:
+                left = max(0.0, (a0 - s_.timestamp()) / span * 100)
+                width = max(0.15, (b0 - max(a0, s_.timestamp())) / span * 100)
+                when = (f"{datetime.fromtimestamp(a0, CFG.tz).strftime('%d.%m. %H:%M')}–"
+                        f"{datetime.fromtimestamp(b0, CFG.tz).strftime('%H:%M')}")
+                label = f"{when} {st}"
+                bars += (f"<div title='{esc(label)}' style='position:absolute;top:0;bottom:0;left:{left:.3f}%;"
+                         f"width:{width:.3f}%;background:{STATE_COLOR[st]}'></div>")
+                avg = f"Ø {de(hs / iv, 0)} H/s" if st == "mint" and iv else ""
+                lst += (f"<tr><td>{when}</td>"
+                        f"<td>{st}</td><td class='n'>{de(iv / 60, 0)} min</td><td class='n'>{avg}</td></tr>")
+            timeline += (f"<p style='margin:10px 0 4px'><b>{esc(dev)}</b></p>"
+                         f"<div style='position:relative;height:22px;background:#fff;border:1px solid var(--line);"
+                         f"border-radius:6px;overflow:hidden'>{bars}</div>"
+                         f"<details><summary class='mut' style='font-size:13px;cursor:pointer'>{len(segs)} Abschnitte</summary>"
+                         f"<table><tr><th>Zeit</th><th>Status</th><th class='n'>Dauer</th><th class='n'>Hashrate</th></tr>"
+                         f"{lst}</table></details>")
+        timeline += (f"<p class='mut' style='font-size:12.5px'>{s_.strftime('%d.%m. %H:%M')} bis "
+                     f"{e_.strftime('%d.%m. %H:%M')}</p>")
+
+    days_html = ""
+    if span > 36 * 3600 and a["days"]:
+        per_day: dict[str, dict] = {}
+        for (day, dev), d in a["days"].items():
+            x = per_day.setdefault(day, {"mining_s": 0, "hashes": 0.0, "kwh": 0.0, "cost": 0.0, "exp": Decimal(0)})
+            if dev != activity.NAS_DEVICE:
+                x["mining_s"] += d["mining_s"]
+                x["hashes"] += d["hashes"]
+                x["exp"] += d["exp_xmr"]
+            x["kwh"] += d["kwh"]
+            x["cost"] += d["cost"]
+        def day_span(day: str) -> float:
+            d0 = datetime.fromisoformat(day).replace(tzinfo=CFG.tz)
+            d1 = d0 + timedelta(days=1)
+            return max((min(d1, e_) - max(d0, s_)).total_seconds(), 1.0)
+        tr = "".join(
+            f"<tr><td>{datetime.fromisoformat(day).strftime('%d.%m.%Y')}</td><td class='n'>{_hm(x['mining_s'])}</td>"
+            f"<td class='n'>{de(x['hashes'] / day_span(day), 0)}</td>"
+            f"<td class='n'>{de(x['hashes'] / 1e6, 1)}</td><td class='n'>{de(x['kwh'], 3)}</td>"
+            f"<td class='n'>{eurf(x['cost'])}</td><td class='n'>{de(x['exp'], 8)}</td></tr>"
+            for day, x in per_day.items())
+        days_html = (f"<h2>Je Tag, alle Geräte</h2><div style='overflow-x:auto'><table><tr><th>Tag</th>"
+                     f"<th class='n'>Mining-Zeit</th><th class='n'>Ø H/s zusammen</th><th class='n'>Hashes (Mio.)</th><th class='n'>kWh</th>"
+                     f"<th class='n'>Kosten</th><th class='n'>erwartet XMR</th></tr>{tr}</table></div>")
+
+    pay = "".join(
+        f"<tr><td>{datetime.fromtimestamp(p['ts'], CFG.tz).strftime('%d.%m.%Y %H:%M')}</td><td class='n'>{p['height']}</td>"
+        f"<td class='n'>{xmrf(p['amount'], 8)}</td><td class='n'>{eurf(None if not p['price_eur'] else Decimal(p['price_eur']))}</td></tr>"
+        for p in a["payouts"])
+    payouts = (f"<h2>Auszahlungen im Zeitraum</h2><table><tr><th>Zeit</th><th class='n'>Block</th>"
+               f"<th class='n'>XMR</th><th class='n'>Kurs</th></tr>"
+               f"{pay or '<tr><td colspan=4 class=mut>keine</td></tr>'}</table>")
+
+    nerr = db.get_meta("network_error") or ""
+    net_note = (f'<span class="pill bad">Node-Fehler</span> <span class="mut">{esc(nerr)}</span> ' if nerr else "")
+    missing = (f"<p class='note'>Für {_hm(t['exp_missing_s'])} Mining-Zeit fehlen Difficulty-Werte vom Node; "
+               f"dieser Anteil fehlt im Gegenwert.</p>") if t["exp_missing_s"] else ""
+    net = (f"<h2>Netz und Methode</h2>{missing}<p>{net_note}Ø Difficulty "
+           f"{de(a['difficulty'] / 1e9, 1) + ' G' if a['difficulty'] else '–'}, Ø Blockbelohnung "
+           f"{_xmr(a['reward'], 4) if a['reward'] else '–'} ({a['net_count']} Werte vom eigenen Node). "
+           f"Datenbasis: {a['resolution']}{' (auf volle Stunden gerundet)' if not a['minute'] else ''}.</p>"
+           f"<p class='mut'>Hashes = gemeldete Hashrate × Abfrageintervall (Abfrage alle {CFG.poll_seconds} s). "
+           f"Rechnerischer Gegenwert = Hashes ÷ Difficulty × Blockbelohnung, je Stunde mit dem Wert vom eigenen Node; "
+           f"P2Pool erhebt keine Gebühr, Uncles/Orphans sind nicht berücksichtigt. Auszahlungen kommen nur, wenn "
+           f"P2Pool einen Block findet, während ein eigener Share im PPLNS-Fenster liegt – über kurze Zeiträume "
+           f"weichen sie deshalb stark vom Gegenwert ab. Reine Auswertung; Grundlage für Bericht und Steuer bleiben "
+           f"die Seiten Zuflüsse und Strom.</p>")
+
+    body = (f"<h1>Auswertung</h1><p>{presets}</p>{form}"
+            f"<p class='mut'>{s_.strftime('%d.%m.%Y %H:%M')} bis {e_.strftime('%d.%m.%Y %H:%M')}</p>"
+            f"{cards}{table}{timeline}{days_html}{payouts}{net}")
+    return page("/auswertung", "Auswertung", body)
+
+
+def analysis_csv(q) -> bytes:
+    start, end, _ = analysis_range(q)
+    a = activity.analyse(CFG, start, end)
+    buf = io.StringIO()
+    w = csv.writer(buf, delimiter=";")
+    num = lambda v, n: f"{float(v):.{n}f}".replace(".", ",")  # noqa: E731
+    w.writerow(["Tag", "Gerät", "Mining h", "pausiert h", "nicht erreichbar h", "Ø H/s", "max H/s", "Hashes",
+                "kWh", "Kosten EUR", "erwartet XMR"])
+    for (day, dev), d in a["days"].items():
+        w.writerow([day, dev, num(d["mining_s"] / 3600, 3), num(d["paused_s"] / 3600, 3),
+                    num(d["offline_s"] / 3600, 3), num(d["hr_avg"], 0), num(d["hr_max"], 0), num(d["hashes"], 0),
+                    num(d["kwh"], 4), num(d["cost"], 4), num(d["exp_xmr"], 12)])
+    return ("\ufeff" + buf.getvalue()).encode("utf-8")
 
 
 def p_lots(q) -> str:
@@ -336,6 +656,100 @@ def p_calc(q) -> str:
     return page("/rechner", "Verkaufs-Rechner", body)
 
 
+def _profile_text(p: dict) -> str:
+    parts = [str(p.get(k)) for k in ("model_name", "model", "chip") if p.get(k)]
+    cores = p.get("cores") or {}
+    if isinstance(cores, dict) and cores.get("total"):
+        perf, eff = cores.get("performance"), cores.get("efficiency")
+        parts.append(f"{cores['total']} Kerne" + (f" ({perf} P / {eff} E)" if perf and eff else ""))
+    if p.get("fanless"):
+        parts.append("lüfterlos")
+    if p.get("os"):
+        parts.append(str(p["os"]))
+    return " · ".join(esc(x) for x in parts) or "–"
+
+
+def p_devices(q, msg: str = "") -> str:
+    now = datetime.now(CFG.tz).timestamp()
+    code = devices.active_code(now)
+    if not CFG.pairing:
+        code_html = "<p class='mut'>Kopplung ist in config.toml abgeschaltet (<span class=mono>[pool] pairing = false</span>).</p>"
+    elif code:
+        mins = max(1, int((code["expires"] - now) // 60))
+        code_html = (f"<div class='card' style='max-width:420px'><div class='k'>Kopplungscode</div>"
+                     f"<div class='v mono' style='font-size:30px;letter-spacing:4px'>{code['code'][:3]} {code['code'][3:]}</div>"
+                     f"<div class='s'>gültig bis {tsfmt(code['expires'])} (noch ≈ {mins} Min.), nur einmal verwendbar"
+                     f"</div></div><p class='mut'>Diesen Code im Installer des neuen Rechners eingeben. "
+                     f"Nach fünf Fehlversuchen wird er ungültig.</p>"
+                     f"<form method='post' action='/geraete/code'><input type='hidden' name='aktion' value='abbrechen'>"
+                     f"<button class='sec'>Code verwerfen</button></form>")
+    else:
+        code_html = ("<form method='post' action='/geraete/code'><button>Neuen Rechner koppeln – Code erzeugen</button>"
+                     "</form><p class='mut'>Der Code ist 10 Minuten gültig. Danach meldet sich der Rechner hier und "
+                     "wird erst nach deiner Freigabe abgefragt.</p>")
+
+    listing = devices.listing()
+    pend = ""
+    for d in [x for x in listing if x["status"] == "pending"]:
+        pr = d["proposal"]
+        w = pr.get("watts")
+        note = pr.get("note") or ""
+        thr = pr.get("threads") or d["threads"]
+        pend += (f"<tr><td><b>{esc(d['name'])}</b><div class='mut mono'>{esc(d['url'])}</div></td>"
+                 f"<td>{_profile_text(d['profile'])}<div class='mut'>Threads: {esc(d['threads'])}"
+                 f"{f' · Vorschlag: {esc(thr)}' if thr and str(thr) != str(d['threads']) else ''}</div></td>"
+                 f"<td class='mut'>{tsfmt(d['created'])}</td>"
+                 f"<td><form method='post' action='/geraete/freigeben' class='inline' style='padding:8px'>"
+                 f"<input type='hidden' name='id' value='{d['id']}'>"
+                 f"<label>Mehrverbrauch W<input name='watts' value='{esc('' if w is None else de(w, 1))}' required "
+                 f"style='min-width:80px;width:90px'></label>"
+                 f"<label>Messung / Notiz<input name='note' value='{esc(note)}' required style='min-width:260px'></label>"
+                 f"<button>Freigeben</button></form>"
+                 f"<form method='post' action='/geraete/ablehnen' style='margin-top:6px'>"
+                 f"<input type='hidden' name='id' value='{d['id']}'><button class='sec'>Ablehnen</button></form></td></tr>")
+
+    act = ""
+    for m in CFG.miners:
+        act += (f"<tr><td><b>{esc(m.name)}</b><div class='mut mono'>{esc(m.url)}</div></td><td>config.toml</td>"
+                f"<td class='n'>{de(m.watts, 1)} W</td><td class='mut'>{esc(m.note)}</td>"
+                f"<td class='mut'>in config.toml ändern</td></tr>")
+    for d in [x for x in listing if x["status"] == "active"]:
+        cur = d["watts"][-1] if d["watts"] else None
+        hist = "".join(f"<div>{tsfmt(w['valid_from'])}: {de(w['watts'], 1)} W – {esc(w['note'])}</div>"
+                       for w in d["watts"])
+        act += (f"<tr><td><b>{esc(d['name'])}</b><div class='mut mono'>{esc(d['url'])}</div>"
+                f"<div class='mut'>Threads {esc(d['threads'])} · zuletzt gemeldet {tsfmt(d['last_seen'])}</div></td>"
+                f"<td>gekoppelt<div class='mut'>{_profile_text(d['profile'])}</div></td>"
+                f"<td class='n'>{de(cur['watts'], 1) if cur else '–'} W</td><td class='mut'>{hist}</td>"
+                f"<td><form method='post' action='/geraete/watt' class='inline' style='padding:8px'>"
+                f"<input type='hidden' name='id' value='{d['id']}'>"
+                f"<label>Neuer Wert W<input name='watts' required style='min-width:80px;width:90px'></label>"
+                f"<label>Messung / Notiz<input name='note' required style='min-width:200px'></label>"
+                f"<button class='sec'>ab jetzt</button></form>"
+                f"<form method='post' action='/geraete/stilllegen' style='margin-top:6px' "
+                f"onsubmit=\"return confirm('Gerät stilllegen? Es wird nicht mehr abgefragt; die Historie bleibt.')\">"
+                f"<input type='hidden' name='id' value='{d['id']}'><button class='sec'>Stilllegen</button></form></td></tr>")
+
+    old = "".join(f"<tr><td>{esc(d['name'])}</td><td class='mut'>stillgelegt {tsfmt(d['retired'])}</td>"
+                  f"<td class='mut'>{' · '.join(f'{de(w['watts'], 1)} W ab {tsfmt(w['valid_from'])}' for w in d['watts'])}"
+                  f"</td></tr>" for d in listing if d["status"] == "retired")
+
+    stratum = f"{CFG.stratum_host}:{CFG.stratum_port}" if CFG.stratum_host else f"NAS, Port {CFG.stratum_port}"
+    body = (f"<h1>Geräte</h1>{f'<p class=note>{esc(msg)}</p>' if msg else ''}"
+            f"<p class='mut'>Neue Rechner richtest du mit <span class='mono'>deploy/mac/install.sh</span> ein: Der "
+            f"Installer findet diesen Ledger im Heimnetz, übernimmt die Pool-Adresse ({esc(stratum)}) und koppelt "
+            f"den Rechner mit einem Code. Erfasst wird er erst nach der Freigabe – mit dem gemessenen "
+            f"Mehrverbrauch, der ab dann für jede Abfrage festgeschrieben wird.</p>"
+            f"<h2>Neuen Rechner koppeln</h2>{code_html}"
+            f"<h2>Wartet auf Freigabe</h2><table><tr><th>Rechner</th><th>Gerät</th><th>gemeldet</th>"
+            f"<th>Freigabe</th></tr>{pend or '<tr><td colspan=4 class=mut>keine</td></tr>'}</table>"
+            f"<h2>Aktive Rechner</h2><table><tr><th>Rechner</th><th>Quelle</th><th class='n'>Mehrverbrauch</th>"
+            f"<th>Messung / Historie</th><th></th></tr>{act or '<tr><td colspan=5 class=mut>keine</td></tr>'}</table>"
+            f"<p class='mut'>Ein neuer Wert gilt ab dem Speichern; bereits erfasste Zeiten behalten ihren Wert.</p>"
+            f"{f'<h2>Stillgelegt</h2><table>{old}</table>' if old else ''}")
+    return page("/geraete", "Geräte", body)
+
+
 # ---------- HTTP ----------
 class Handler(BaseHTTPRequestHandler):
     server_version = "xmr-ledger"
@@ -393,6 +807,9 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/health":  # ohne Passwort, für den Docker-Healthcheck
             self._send(b"ok", "text/plain; charset=utf-8")
             return
+        if u.path == "/api/moneta":  # ohne Passwort: damit neue Rechner den Ledger im Heimnetz finden
+            self._json(discovery())
+            return
         if not self._auth():
             return
         q = urllib.parse.parse_qs(u.query)
@@ -406,16 +823,30 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if u.path == "/":
                 self._send(p_overview(q).encode())
+            elif u.path == "/api/live":
+                self._send(json.dumps(overview_live(year), ensure_ascii=False).encode(),
+                           "application/json; charset=utf-8")
             elif u.path == "/zufluesse":
                 self._send(p_inflows(q).encode())
             elif u.path == "/strom":
                 self._send(p_power(q).encode())
+            elif u.path == "/auswertung":
+                self._send(p_analysis(q).encode())
+            elif u.path == "/auswertung.csv":
+                try:
+                    data = analysis_csv(q)
+                except ValueError as e:
+                    self._send(f"Ungültiger Zeitraum: {e}".encode(), "text/plain; charset=utf-8", 400)
+                    return
+                self._send(data, "text/csv; charset=utf-8", filename="moneta-auswertung.csv")
             elif u.path == "/lose":
                 self._send(p_lots(q).encode())
             elif u.path == "/abgaenge":
                 self._send(p_disposals(q).encode())
             elif u.path == "/rechner":
                 self._send(p_calc(q).encode())
+            elif u.path == "/geraete":
+                self._send(p_devices(q).encode())
             elif u.path == "/bericht.xlsx":
                 self._send(report.build_xlsx(CFG, year),
                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -429,15 +860,49 @@ class Handler(BaseHTTPRequestHandler):
             log.exception("Fehler bei %s", self.path)
             self._send(f"Fehler: {e}".encode(), "text/plain; charset=utf-8", 500)
 
+    def _json(self, obj: dict, status: int = 200):
+        self._send(json.dumps(obj, ensure_ascii=False).encode(), "application/json; charset=utf-8", status)
+
+    def _api_post(self, path: str) -> None:
+        """Endpunkte für Rechner (ohne Dashboard-Passwort): Kopplung per Code, Heartbeat per Geräte-Token.
+        Kein Browser-Formular – statt der Same-Origin-Prüfung gilt: nur JSON, Größenlimit, Code bzw. Token."""
+        try:
+            ctype = self.headers.get("Content-Type", "").split(";")[0].strip().lower()
+            if ctype != "application/json":
+                raise devices.PairError(415, "Content-Type application/json erwartet")
+            n = int(self.headers.get("Content-Length", 0) or 0)
+            if not 0 < n <= devices.MAX_BODY:
+                raise devices.PairError(413, "Anfrage leer oder zu groß")
+            try:
+                body = json.loads(self.rfile.read(n))
+            except ValueError:
+                raise devices.PairError(400, "Ungültiges JSON") from None
+            if path == "/api/pair":
+                res = devices.pair(CFG, body)
+                log.info("Neuer Rechner gekoppelt, wartet auf Freigabe: %s", res["name"])
+                self._json({**res, **discovery()}, 201)
+            else:
+                auth = self.headers.get("Authorization", "")
+                token = auth[7:].strip() if auth.startswith("Bearer ") else ""
+                self._json({**devices.heartbeat(CFG, token, body), **discovery()})
+        except devices.PairError as e:
+            self._json({"error": str(e)}, e.status)
+
     def do_POST(self):  # noqa: N802
+        u = urllib.parse.urlparse(self.path)
+        if u.path in ("/api/pair", "/api/heartbeat"):
+            self._api_post(u.path)
+            return
         if not self._auth():
             return
         if not self._same_origin():
             self._send("Abgelehnt: Anfrage kam nicht vom Dashboard".encode(), "text/plain; charset=utf-8", 403)
             return
-        u = urllib.parse.urlparse(self.path)
         n = int(self.headers.get("Content-Length", 0))
         form = {k: v[0] for k, v in urllib.parse.parse_qs(self.rfile.read(n).decode()).items()}
+        if u.path.startswith("/geraete/"):
+            self._devices_post(u.path, form)
+            return
         try:
             if u.path == "/abgaenge":
                 d = date.fromisoformat(form["datum"])
@@ -472,6 +937,37 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(b"Nicht gefunden", "text/plain; charset=utf-8", 404)
         except (KeyError, ValueError, InvalidOperation) as e:
             self._send(p_disposals({}, msg=f"Nicht gespeichert: {e}").encode(), status=400)
+
+
+    def _devices_post(self, path: str, form: dict) -> None:
+        try:
+            if path == "/geraete/code":
+                if form.get("aktion") == "abbrechen":
+                    devices.cancel_code()
+                elif CFG.pairing:
+                    devices.new_code()
+                    log.info("Kopplungscode erzeugt (10 Minuten gültig)")
+            elif path == "/geraete/freigeben":
+                devices.approve(int(form["id"]), form.get("watts", ""), form.get("note", ""))
+            elif path == "/geraete/ablehnen":
+                devices.reject(int(form["id"]))
+            elif path == "/geraete/watt":
+                devices.set_watts(int(form["id"]), form.get("watts", ""), form.get("note", ""))
+            elif path == "/geraete/stilllegen":
+                devices.retire(int(form["id"]))
+            else:
+                self._send(b"Nicht gefunden", "text/plain; charset=utf-8", 404)
+                return
+            self._redirect("/geraete")
+        except (KeyError, ValueError) as e:
+            self._send(p_devices({}, msg=f"Nicht gespeichert: {e}").encode(), status=400)
+
+
+def discovery() -> dict:
+    """Antwort auf GET /api/moneta: nur, was ein neuer Rechner zum Verbinden braucht – nichts Sensibles."""
+    return {"service": "moneta-ledger", "api": 1, "version": version.VERSION,
+            "stratum": {"host": CFG.stratum_host or None, "port": CFG.stratum_port},
+            "pairing": CFG.pairing}
 
 
 def serve(cfg: Config, stop) -> ThreadingHTTPServer:

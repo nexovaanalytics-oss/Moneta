@@ -26,6 +26,19 @@ password = ""          # Pflicht – das Dashboard zeigt Finanzdaten
 # Optional: kostenloser CoinGecko-Demo-API-Key (höheres Abfragelimit). Leer lassen geht auch.
 coingecko_api_key = ""
 
+[node]
+# Eigener Monero-Node (eingeschränkter RPC) für Difficulty und Blockbelohnung auf der Seite „Auswertung“.
+# Im Compose-Stack ist der Standard richtig; leer ("") schaltet die Abfrage ab. Es geht nichts ins Internet.
+rpc_url = "http://monerod:18089/json_rpc"
+
+[pool]
+# Für neue Rechner: Installer und Menüleisten-App finden den Ledger im Heimnetz (GET /api/moneta) und
+# übernehmen daraus die Stratum-Adresse von P2Pool. Leerer Host = dieselbe IP wie der Ledger (NAS).
+stratum_host = ""
+stratum_port = 3333
+# Kopplung neuer Rechner per Code aus dem Dashboard (Seite „Geräte“). false schaltet /api/pair ab.
+pairing = true
+
 [power]
 poll_seconds = 60
 # Optionaler Mehrverbrauch der NAS durch Node + Pool (läuft rund um die Uhr). 0 = nicht ansetzen.
@@ -37,6 +50,7 @@ nas_note = ""
 valid_from = "2026-01-01"
 ct_per_kwh = 35.0
 
+# Rechner lassen sich im Dashboard unter „Geräte“ koppeln (empfohlen) oder hier eintragen.
 # Je Rechner ein Block. url = IP des Macs (feste IP im Router vergeben) + XMRig-API-Port.
 # token = derselbe Wert wie bei --http-access-token im xmrig-Befehl.
 # watts = gemessener MEHRverbrauch beim Minen (siehe docs/de/setup-mac.md; EN: docs/en/setup-mac.md).

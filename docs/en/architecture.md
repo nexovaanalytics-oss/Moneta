@@ -18,12 +18,12 @@
 | Port | Service | Reachable from |
 |---|---|---|
 | 18080/tcp | monerod P2P | Internet outbound; inbound only with port forwarding (optional) |
-| 18089/tcp | monerod restricted RPC | LAN (wallets, P2Pool, wallet-rpc) |
+| 18089/tcp | monerod restricted RPC | LAN (wallets, P2Pool, wallet-rpc, ledger) |
 | 18084/tcp | monerod ZMQ | Docker-internal only |
 | 3333/tcp | P2Pool Stratum | LAN (miners) |
 | 37888/tcp | P2Pool P2P (mini) | Internet outbound |
 | 18082/tcp | wallet-rpc | Docker-internal only, no published port |
-| 8090/tcp | Ledger dashboard | LAN, Basic Auth |
+| 8090/tcp | Ledger dashboard | LAN, Basic Auth; `/api/moneta`, `/api/pair`, `/api/heartbeat` without password (pairing code or device token only) |
 | 18000/tcp | XMRig API on the computers | LAN, bearer token, read-only |
 
 **Never** expose Stratum, RPC or the dashboard to the internet via port forwarding. If the NAS firewall is
@@ -35,10 +35,14 @@ active, allow 3333, 8090 and, if needed, 18089 only for your own LAN subnet.
                  every 60 s                        every 120 s
 XMRig API (computers) ────▶ miners.py ──▶ power_daily / power_samples
                                          (mining time × watts × tariff, frozen at record time)
+                                         + activity_hourly (hourly values, analysis only)
+monerod (own node, hourly) ──▶ network.py ──▶ network_samples (difficulty, block reward)
+
+Computers (pairing) ──▶ /api/pair, /api/heartbeat ──▶ devices, device_watts (approval and watts in the dashboard)
 
 wallet-rpc ──────────────▶ walletsync.py ──▶ inflows  (coinbase = mining inflow, otherwise "other receipt")
                                                 │
-CoinGecko (every 30 min,  ──▶ prices.py ──▶ price_points ──▶ price per inflow (nearest 5-min value,
+CoinGecko (every 10 min,  ──▶ prices.py ──▶ price_points ──▶ price per inflow (nearest 5-min value,
  last 24 h, unrelated                                         else daily price, else manual)
  to payouts)
 

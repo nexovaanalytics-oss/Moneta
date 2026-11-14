@@ -19,8 +19,10 @@ comments in German). It contains the **view key** – do not share it, never com
 | `[wallet]` | `address` (4…), `view_key` (`viewkey` → secret), `restore_height` (block height shortly before the wallet was created), `wallet_password` (any) |
 | `[web]` | `port`, `user`, `password` (required) |
 | `[prices]` | `coingecko_api_key` (optional; a free demo key raises the rate limit) |
+| `[node]` | `rpc_url` of your own node for difficulty and block reward (default `http://monerod:18089/json_rpc`, empty = off) |
+| `[pool]` | for new computers: `stratum_host` (empty = the NAS IP), `stratum_port` (default 3333); `pairing` (default `true`) allows pairing with a code |
 | `[power]` | `poll_seconds`, `nas_extra_watts` (0 = don't count the NAS), `[[power.tariff]]` with `valid_from`, `ct_per_kwh` |
-| `[[miner]]` | per computer: `name`, `url` (`http://IP:18000`), `token`, `watts` (extra power draw), `note` (measurement) |
+| `[[miner]]` | optional instead of pairing in the dashboard, per computer: `name`, `url` (`http://IP:18000`), `token`, `watts` (extra power draw), `note` (measurement) |
 
 Check before copying it over:
 
@@ -36,14 +38,47 @@ After changes: `sudo docker restart xmr-ledger`.
 
 | Page | Content |
 |---|---|
-| **Übersicht** (overview) | Holdings, amount sellable tax-free, income/electricity/result for the year, device status, latest payouts, downloads |
+| **Übersicht** (overview) | Holdings, amount sellable tax-free, income/electricity/result for the year, device status with a total row (hashrate and extra power of all mining devices, incl. NAS if set), latest payouts, downloads |
 | **Zuflüsse** (inflows) | All payouts with price and price source; other receipts listed separately |
-| **Strom** (electricity) | Mining hours, avg. watts, kWh, avg. ct/kWh, cost per device and month |
+| **Strom** (electricity) | Mining hours, avg. watts, kWh, avg. ct/kWh, cost per device and month, plus totals across all devices (year and per month) |
+| **Auswertung** (analysis) | Any time range (presets: last night, 24 h, 7/30 days, month, year): per device time mining/paused/unreachable with a timeline, avg./max. hashrate, hashes, kWh, cost; expected value (hashes ÷ difficulty × block reward) vs. actual payouts; per day; CSV |
 | **Lose** (lots) | FIFO lots with acquisition cost and **steuerfrei ab** (tax-free from) date |
 | **Abgänge** (outflows) | Record/delete transfers out of the mining wallet |
 | **Verkaufs-Rechner** (sale calculator) | Simulate a planned sale/exchange (nothing is stored) |
+| **Geräte** (devices) | Pair new computers with a code and approve them, change the extra power draw "from now on" (history), retire |
 
 `/health` answers `ok` without a password (Docker healthcheck).
+
+`/api/moneta` also answers without a password, but only with the service name, version, stratum address and
+whether pairing is possible – this is how new computers find the ledger in the home network. `/api/pair`
+(pairing code) and `/api/heartbeat` (device token) only accept JSON from computers, see
+[Pairing computers](#pairing-computers).
+
+**Refresh:** While the tab is open, the overview fetches new values every 30 s without reloading the page
+(`/api/live`, JSON, same login; paused in a background tab). Next to the year it shows how old the last fetch is,
+or "Verbindung verloren" (connection lost). Without JavaScript the overview reloads every 2 minutes. The ledger
+collects the data itself in the background: machines every `poll_seconds` (default 60 s), wallet every 120 s,
+price history every 10 minutes.
+
+## Pairing computers
+
+New computers can be added without an entry in `config.toml`:
+
+1. Dashboard → **Geräte** → "Neuen Rechner koppeln – Code erzeugen". The 6-digit code is valid for 10 minutes
+   and only once; after five failed attempts it becomes invalid.
+2. The computer registers with the code via `POST /api/pair`: name, XMRig URL (home-network addresses only), API
+   token, device profile (model, cores) and – if measured – a suggestion for threads and extra power draw. The
+   installer and menu bar app will do this with the next update of `deploy/mac`.
+3. The computer appears under **Wartet auf Freigabe** (awaiting approval). Check or enter the extra power draw
+   and the measurement note, then **Freigeben** (approve). Only then is it polled; the value is frozen with every
+   sample, as for `[[miner]]`.
+4. If the extra power draw changes (e.g. a different thread count), save a new value under **Aktive Rechner**:
+   it applies from the moment it is saved; earlier samples stay unchanged. The Excel report (sheet "Geräte")
+   shows the history with "gültig ab" (valid from). **Stilllegen** (retire) stops polling; history and name stay
+   visible.
+
+Paired computers report in with their token via `POST /api/heartbeat`; a changed IP is taken over. Computers
+from `[[miner]]` keep working unchanged (changes there still need a container restart).
 
 ## Usage
 
@@ -66,6 +101,9 @@ After changes: `sudo docker restart xmr-ledger`.
 | `walletsync.py` | wallet-rpc: create/open wallet, read incoming transfers, clean up after reorgs |
 | `prices.py` | 5-minute price history, price matching, daily-price fallback, manual prices |
 | `miners.py` | Query the XMRig API, record mining time and costs |
+| `devices.py` | Paired computers: pairing code, registration, approval, watt history, heartbeat |
+| `activity.py` | Hourly values per device, analysis over time ranges |
+| `network.py` | Difficulty and block reward from your own node |
 | `ledger.py` | Lots, FIFO, holding periods, annual summary, sale calculator |
 | `report.py` | Excel and CSV export |
 | `web.py` | Dashboard, forms, downloads, auth, CSRF protection |
@@ -75,6 +113,8 @@ Tests: `python -m pytest -q ledger/tests` (fake wallet, fake XMRig, fake prices 
 
 ## Limitations
 
+- Analysis: per-minute values (with timeline) are kept for 30 days, hourly values after that. Hashes = reported
+  hashrate × poll interval (approximation); the expected value ignores uncles/orphans. Display only, not a tax basis.
 - CoinGecko (free, no guarantee); historical prices via the free API go back only about one year.
 - Mining time only counts while the ledger is running and can reach the computer (costs tend to be
   under- rather than overstated).
@@ -83,3 +123,5 @@ Tests: `python -m pytest -q ledger/tests` (fake wallet, fake XMRig, fake prices 
   [roadmap](../../ROADMAP.md)).
 - The tax logic implements **German** rules (see [Tax methodology](tax-methodology.md)); profiles for other
   countries are on the roadmap.
+- Pairing: token and device details travel unencrypted within the LAN, like the dashboard password. Without a
+  valid code no computer can register, and without approval none is recorded.

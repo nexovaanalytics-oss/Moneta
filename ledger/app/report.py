@@ -11,6 +11,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+import devices
 import ledger
 import version
 from config import Config
@@ -149,14 +150,25 @@ def build_xlsx(cfg: Config, year: int) -> bytes:
 
     # --- Geräte (Messgrundlage) ---
     ws = wb.create_sheet("Geräte")
-    _header(ws, [("Gerät", 28), ("Mehrverbrauch Watt", 18), ("Messung / Notiz", 80)])
-    devs = [(m.name, m.watts, m.note) for m in cfg.miners]
+    _header(ws, [("Gerät", 28), ("Mehrverbrauch Watt", 18), ("gültig ab", 18), ("Messung / Notiz", 80),
+                 ("Quelle", 26)])
+    devs = [(m.name, m.watts, "", m.note, "config.toml") for m in cfg.miners]
     if cfg.nas_extra_watts > 0:
-        devs.append(("NAS (Node + Pool)", cfg.nas_extra_watts, cfg.nas_note))
-    for i, (name, w, note) in enumerate(devs, 2):
+        devs.append(("NAS (Node + Pool)", cfg.nas_extra_watts, "", cfg.nas_note, "config.toml"))
+    for d in devices.listing():   # im Dashboard gekoppelte Rechner, Watt als Historie
+        if d["status"] == "pending":
+            continue
+        src = "gekoppelt" + (f", stillgelegt {datetime.fromtimestamp(d['retired'], cfg.tz):%d.%m.%Y}"
+                             if d["status"] == "retired" and d["retired"] else "")
+        for w in d["watts"]:
+            devs.append((d["name"], w["watts"], f"{datetime.fromtimestamp(w['valid_from'], cfg.tz):%d.%m.%Y %H:%M}",
+                         w["note"], src))
+    for i, (name, w, since, note, src) in enumerate(devs, 2):
         ws.cell(row=i, column=1, value=name)
         ws.cell(row=i, column=2, value=w)
-        ws.cell(row=i, column=3, value=note)
+        ws.cell(row=i, column=3, value=since)
+        ws.cell(row=i, column=4, value=note)
+        ws.cell(row=i, column=5, value=src)
     r = len(devs) + 3
     ws.cell(row=r, column=1, value="Strompreise").font = BOLD
     for j, t in enumerate(cfg.tariffs, 1):

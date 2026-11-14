@@ -8,9 +8,11 @@ import os
 import signal
 import threading
 
+import activity
 import config
 import db
 import miners
+import network
 import prices
 import version
 import walletsync
@@ -27,16 +29,19 @@ def main() -> None:
     cfg = config.load(args.config)
     os.makedirs(cfg.data_dir, exist_ok=True)
     schema = db.init(os.path.join(cfg.data_dir, "ledger.sqlite"))
-    logging.info("%s gestartet (DB-Schema v%d, %d Rechner)", version.label(), schema, len(cfg.miners))
-    for m in cfg.miners:
+    logging.info("%s gestartet (DB-Schema v%d, %d Rechner)", version.label(), schema, len(miners.current(cfg)))
+    for m in miners.current(cfg):
         if m.watts <= 0:
             logging.warning("%s: watts = 0 – für dieses Gerät werden keine Stromkosten erfasst", m.name)
+
+    activity.backfill_hourly(cfg)  # einmalig nach Migration 3, bevor neue Abfragen gebucht werden
 
     stop = threading.Event()
     threads = [
         threading.Thread(target=walletsync.loop, args=(cfg, stop), name="wallet", daemon=True),
         threading.Thread(target=prices.loop, args=(cfg, stop), name="prices", daemon=True),
         threading.Thread(target=miners.loop, args=(cfg, stop), name="miners", daemon=True),
+        threading.Thread(target=network.loop, args=(cfg, stop), name="network", daemon=True),
     ]
     for t in threads:
         t.start()

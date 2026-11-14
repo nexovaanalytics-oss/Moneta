@@ -78,6 +78,57 @@ MIGRATIONS: list[str] = [
         source TEXT NOT NULL
     );
     """,
+    # 3: Auswertung über beliebige Zeiträume (nur Anzeige, keine Steuergrundlage):
+    #    Stundenwerte je Gerät (Minutenwerte werden nach 30 Tagen gelöscht) und
+    #    Difficulty/Blockbelohnung vom eigenen Node für den rechnerischen Gegenwert
+    """
+    CREATE TABLE IF NOT EXISTS activity_hourly (
+        hour      INTEGER NOT NULL,   -- Unix-Zeit des Stundenbeginns
+        device    TEXT NOT NULL,
+        polls     INTEGER NOT NULL DEFAULT 0,
+        mining_s  INTEGER NOT NULL DEFAULT 0,
+        paused_s  INTEGER NOT NULL DEFAULT 0,   -- erreichbar, aber pausiert bzw. ohne Hashrate
+        offline_s INTEGER NOT NULL DEFAULT 0,   -- XMRig-API nicht erreichbar
+        hashes    REAL NOT NULL DEFAULT 0,      -- Hashrate x Intervall
+        hr_max    REAL NOT NULL DEFAULT 0,
+        kwh       REAL NOT NULL DEFAULT 0,
+        cost_eur  REAL NOT NULL DEFAULT 0,
+        PRIMARY KEY (hour, device)
+    );
+    CREATE TABLE IF NOT EXISTS network_samples (
+        height     INTEGER PRIMARY KEY,
+        ts         INTEGER NOT NULL,   -- Blockzeit
+        difficulty INTEGER NOT NULL,
+        reward     INTEGER NOT NULL    -- Blockbelohnung in Piconero (inkl. Gebühren)
+    );
+    CREATE INDEX IF NOT EXISTS idx_network_ts ON network_samples(ts);
+    """,
+    # 4: im Dashboard gekoppelte Rechner. Watt als Historie mit valid_from (nie überschreiben);
+    #    stillgelegte Geräte bleiben stehen, damit Name und Historie nachvollziehbar sind
+    """
+    CREATE TABLE IF NOT EXISTS devices (
+        id        INTEGER PRIMARY KEY AUTOINCREMENT,
+        name      TEXT NOT NULL,
+        url       TEXT NOT NULL,             -- XMRig-API, z. B. http://192.168.1.20:18000
+        token     TEXT NOT NULL,             -- --http-access-token des Rechners
+        status    TEXT NOT NULL,             -- 'pending' | 'active' | 'retired'
+        profile   TEXT,                      -- JSON vom Rechner: Modell, Kerne, Messvorschlag
+        threads   TEXT,                      -- gemeldete Thread-Einstellung ("all" oder Zahl)
+        created   INTEGER NOT NULL,
+        approved  INTEGER,
+        retired   INTEGER,
+        last_seen INTEGER                    -- letzte Meldung des Rechners (Kopplung/Heartbeat)
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_name ON devices(name) WHERE status != 'retired';
+    CREATE TABLE IF NOT EXISTS device_watts (
+        device_id  INTEGER NOT NULL REFERENCES devices(id),
+        valid_from INTEGER NOT NULL,          -- Unix-Zeit, ab der der Wert gilt (nie rückwirkend)
+        watts      REAL NOT NULL,
+        note       TEXT NOT NULL,
+        created    INTEGER NOT NULL,
+        PRIMARY KEY (device_id, valid_from)
+    );
+    """,
 ]
 
 _local = threading.local()

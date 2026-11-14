@@ -41,6 +41,32 @@ Para la imagen de un fork privado: `sudo docker login ghcr.io -u <usuario-github
 
 ## Desplegar una nueva versión del ledger en el NAS
 
+**Con el script de actualización** (recomendado): pregunta a GitHub por la última versión `ledger-vX.Y.Z`,
+muestra el cambio y pide confirmación. Después descarga la imagen (antes no se cambia nada), hace una copia de la base
+de datos dentro del contenedor en marcha (`ledger/data/ledger-vor-X.Y.Z-<hora>.sqlite`, copia SQLite con WAL
+incluido), fija `LEDGER_VERSION` en `.env`, reinicia `wallet-rpc` y `ledger`, y muestra el registro y cómo volver
+atrás. La versión sigue fijada: el script solo se ejecuta cuando tú lo lanzas. Descárgalo una vez (léelo antes):
+
+```bash
+cd /volume1/docker/monero
+sudo curl -fsSLo update-ledger.sh https://raw.githubusercontent.com/nexovaanalytics-oss/Moneta/main/deploy/nas/update-ledger.sh
+cat update-ledger.sh
+```
+
+Luego, en cada actualización:
+
+```bash
+cd /volume1/docker/monero
+sudo bash update-ledger.sh --check     # solo mostrar: versión fijada vs. última versión
+sudo bash update-ledger.sh             # última versión, con confirmación
+sudo bash update-ledger.sh 1.2.0       # una versión concreta
+```
+
+La única petición externa va a `api.github.com` (lista de releases), en el momento que elijas y sin relación con los
+pagos.
+
+**A mano:**
+
 ```bash
 cd /volume1/docker/monero
 sudo sed -i 's/^LEDGER_VERSION=.*/LEDGER_VERSION=1.2.0/' .env

@@ -5,17 +5,11 @@ Contributors: add user-facing changes under "Unreleased".
 
 ## Unreleased
 
-**ledger**
-- Pair new computers from the dashboard (new page "Geräte"): generate a 6-digit code (10 min, single use, invalid
-  after five failed attempts); the computer registers via `POST /api/pair` and is only polled after approval with a
-  measured extra power draw and note. Watts per paired computer are kept as a history (`valid_from`, never
-  overwritten; new value applies from now on); computers can be retired. `[[miner]]` in `config.toml` still works.
-- `GET /api/moneta` (no password, no sensitive data): lets installers find the ledger in the LAN and returns the
-  stratum address (`[pool] stratum_host`, `stratum_port`; `pairing` switches pairing off).
-- `POST /api/heartbeat` (device token): paired computers report a changed IP and their thread setting.
-- The device list (overview, `/api/live`, polling) is now read live from `config.toml` plus the database – no
-  restart after pairing. The Excel sheet "Geräte" shows the watt history with "gültig ab" and the source.
-- DB schema v4 (additive: `devices`, `device_watts`).
+**deploy/nas**
+- New `deploy/nas/update-ledger.sh`: deploys a ledger release on the NAS in one step – asks GitHub for the latest
+  `ledger-vX.Y.Z` (or takes a given version), asks for confirmation, pulls the image first, backs up the database
+  inside the running container (SQLite backup incl. WAL), sets `LEDGER_VERSION` in `.env`, restarts `wallet-rpc`
+  and `ledger` and prints the log and rollback steps. `--check` only compares versions. The version stays pinned.
 
 **deploy/mac**
 - New installer `deploy/mac/install.sh`: installs Homebrew and XMRig if needed, asks for pool address and threads,
@@ -40,6 +34,19 @@ Contributors: add user-facing changes under "Unreleased".
 - `xmrig-start.sh`: reads the thread count from `~/.config/moneta/threads`, finds Homebrew's `xmrig` without
   `PATH` (launchd), disables colours when logging, and no longer requires `caffeinate` (Linux).
 - Docs: quick setup in `setup-mac.md`, design decision D-09 (all four languages).
+
+## ledger 1.3.0 – 2026-11-14
+
+- Pair new computers from the dashboard (new page "Geräte"): generate a 6-digit code (10 min, single use, invalid
+  after five failed attempts); the computer registers via `POST /api/pair` and is only polled after approval with a
+  measured extra power draw and note. Watts per paired computer are kept as a history (`valid_from`, never
+  overwritten; new value applies from now on); computers can be retired. `[[miner]]` in `config.toml` still works.
+- `GET /api/moneta` (no password, no sensitive data): lets installers find the ledger in the LAN and returns the
+  stratum address (`[pool] stratum_host`, `stratum_port`; `pairing` switches pairing off).
+- `POST /api/heartbeat` (device token): paired computers report a changed IP and their thread setting.
+- The device list (overview, `/api/live`, polling) is now read live from `config.toml` plus the database – no
+  restart after pairing. The Excel sheet "Geräte" shows the watt history with "gültig ab" and the source.
+- DB schema v4 (additive: `devices`, `device_watts`).
 
 ## ledger 1.2.0 – 2026-11-14
 

@@ -5,11 +5,6 @@ Contributors: add user-facing changes under "Unreleased".
 
 ## Unreleased
 
-**ledger**
-- `GET /api/moneta` additionally returns `economics`: difficulty and block reward from your own node, the latest
-  local price, the current tariff, and from these the calculated revenue per H/s and electricity cost per watt and
-  day – for the thread choice in `einmessen.sh` (design decision D-11). `null` while node value or price is missing.
-
 **deploy/nas**
 - New `deploy/nas/update-ledger.sh`: deploys a ledger release on the NAS in one step – asks GitHub for the latest
   `ledger-vX.Y.Z` (or takes a given version), asks for confirmation, pulls the image first, backs up the database
@@ -62,6 +57,12 @@ Contributors: add user-facing changes under "Unreleased".
   `~/.config/moneta/einmessung.json` (used by installer and pairing).
 - Fix: the docs and installer claimed the Homebrew build donates 0 %; like all official XMRig builds it donates at
   least 1 % (`--donate-level 0` is ignored). Corrected in `setup-mac.md` and D-09.
+
+## ledger 1.4.0 – 2026-11-14
+
+- `GET /api/moneta` additionally returns `economics`: difficulty and block reward from your own node, the latest
+  local price, the current tariff, and from these the calculated revenue per H/s and electricity cost per watt and
+  day – for the thread choice in `einmessen.sh` (design decision D-11). `null` while node value or price is missing.
 
 ## ledger 1.3.0 – 2026-11-14
 

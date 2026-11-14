@@ -95,7 +95,24 @@ Got numbers for another device? Please share them via an issue ("Device measurem
 Only once the node is in sync and P2Pool reports "healthy":
 
 Set up with the installer: menu bar → **Moneta Miner** → *Miner starten* / *Miner stoppen* (start/stop); it
-also offers threads, autostart at login, hashrate, pool connection and the log. The same in the terminal:
+also offers threads, autostart at login, the log and a jump to the dashboard. The app window shows how this Mac
+is doing:
+
+- the current hashrate next to the menu bar icon (can be switched off),
+- the history of the last 15 min / 1 h / 6 h with a *mining / paused / stopped* timeline, average hashrate and
+  paused time (kept in the app's memory only; the dashboard shows the history over days),
+- the hashrate per thread (e.g. to spot slower efficiency cores), pool ping and accepted/rejected stratum shares
+  (not P2Pool's sidechain shares),
+- power source, battery level and thermal state – and, when mining pauses, the **reason**: XMRig runs with
+  `--pause-on-battery` and pauses as soon as macOS runs on battery. This also happens with the power adapter
+  plugged in when a charge limiter such as AlDente lets the battery discharge to its lower limit; the app
+  detects running charge-limiter apps and a connected adapter and says so. It also warns about Low Power Mode
+  and thermal throttling.
+
+The *Dashboard* button opens `http://<pool-host>:8090`; put a different address into `~/.config/moneta/dashboard`.
+To update: `git pull`, then run `deploy/mac/install.sh` again (settings are kept).
+
+The same in the terminal:
 
 ```bash
 MM="$HOME/Library/Application Support/Moneta/moneta-miner.sh"

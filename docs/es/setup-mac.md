@@ -97,8 +97,24 @@ como `note`, en `config.toml`. Vuelve a medir si cambias el número de hilos (se
 Solo cuando el nodo esté sincronizado y P2Pool indique "healthy":
 
 Con el instalador: barra de menús → **Moneta Miner** → *Miner starten* / *Miner stoppen* (iniciar / detener);
-ahí también están los hilos, el inicio al iniciar sesión, el hashrate, la conexión al pool y el registro. Lo mismo
-en el terminal:
+ahí también están los hilos, el inicio al iniciar sesión, el registro y un acceso directo al panel. La ventana de
+la app muestra el funcionamiento de este Mac:
+
+- el hashrate actual junto al icono en la barra de menús (se puede desactivar),
+- el historial de los últimos 15 min / 1 h / 6 h con una línea de tiempo *minando / en pausa / detenido*, el
+  hashrate medio y el tiempo en pausa (solo en la memoria de la app; el historial de varios días está en el panel),
+- el hashrate por hilo (p. ej. para detectar núcleos de eficiencia más lentos), el ping del pool y los shares
+  stratum aceptados/rechazados (no los shares de la sidechain de P2Pool),
+- la fuente de alimentación, el nivel de batería y el estado térmico – y, en caso de pausa, el **motivo**: XMRig
+  se ejecuta con `--pause-on-battery` y se pausa en cuanto macOS funciona con batería. Esto también ocurre con el
+  adaptador conectado cuando un limitador de carga como AlDente deja que la batería se descargue hasta su límite
+  inferior; la app detecta limitadores de carga en ejecución y un adaptador conectado y lo indica. También avisa
+  del modo de bajo consumo y de la limitación térmica.
+
+El botón *Dashboard* abre `http://<host-del-pool>:8090`; otra dirección se indica en `~/.config/moneta/dashboard`.
+Para actualizar: `git pull` y volver a ejecutar `deploy/mac/install.sh` (los ajustes se conservan).
+
+Lo mismo en el terminal:
 
 ```bash
 MM="$HOME/Library/Application Support/Moneta/moneta-miner.sh"

@@ -83,7 +83,7 @@ ct_per_kwh = 30.0
 name = "Pro aus config"
 url = "http://127.0.0.1:{free_port()}"
 token = "x"
-watts = 12.0
+watts = 15.0
 """)
 
     import config, db, devices, miners, report, web  # noqa: E401
@@ -129,7 +129,7 @@ watts = 12.0
                 "token": "devtoken123", "threads": "3",
                 "profile": {"model_name": "MacBook Air", "chip": "Apple M1", "fanless": True,
                             "cores": {"total": 8, "performance": 4, "efficiency": 4}},
-                "proposal": {"threads": "3", "watts": 11.0, "note": "powermetrics 9,6 W - 0,5 W, +10 %"}}
+                "proposal": {"threads": "3", "watts": 8.0, "note": "powermetrics 7,0 W - 0,4 W, +10 %"}}
 
     # --- Kopplung ohne Code bzw. mit falschem Format
     assert api("/api/pair", pair_req)[0] == 403                      # kein Code erzeugt
@@ -166,7 +166,7 @@ watts = 12.0
     assert devices.pending_count() == 1
     assert [m.name for m in miners.current(cfg)] == ["Pro aus config"]
     page_ = http("/geraete", headers={"Authorization": auth})[1].decode()
-    assert "MacBook Air" in page_ and "Apple M1" in page_ and "lüfterlos" in page_ and "11,0" in page_
+    assert "MacBook Air" in page_ and "Apple M1" in page_ and "lüfterlos" in page_ and "8,0" in page_
     assert "devtoken123" not in page_  # Token wird nie angezeigt
     assert "warten auf Freigabe" in http("/", headers={"Authorization": auth})[1].decode()
 
@@ -178,14 +178,14 @@ watts = 12.0
     dev_id = pend[0]["id"]
 
     # --- Freigabe: Watt und Notiz sind Pflicht
-    st, body = http("/geraete/freigeben", f"id={dev_id}&watts=11,0&note=".encode(), form=True)
+    st, body = http("/geraete/freigeben", f"id={dev_id}&watts=8,0&note=".encode(), form=True)
     assert st == 400 and "Notiz" in body.decode()
     st, body = http("/geraete/freigeben", f"id={dev_id}&watts=0&note=x".encode(), form=True)
     assert st == 400
-    st, _ = http("/geraete/freigeben", f"id={dev_id}&watts=11,0&note=powermetrics+9,6+W".encode(), form=True)
+    st, _ = http("/geraete/freigeben", f"id={dev_id}&watts=8,0&note=powermetrics+7,0+W".encode(), form=True)
     assert st == 200
     ms = {m.name: m for m in miners.current(cfg)}
-    assert ms["MacBook Air"].watts == 11.0 and ms["MacBook Air"].source == "device"
+    assert ms["MacBook Air"].watts == 8.0 and ms["MacBook Air"].source == "device"
     assert devices.pending_count() == 0
     # nach der Kopplung ist der Name belegt
     code = devices.new_code()["code"]
@@ -202,7 +202,7 @@ watts = 12.0
     miners.poll_once(cfg, last)
     assert miners.live_status()["MacBook Air"]["mining"] is True
     rows = db.get().execute("SELECT watts, seconds FROM power_samples WHERE device='MacBook Air'").fetchall()
-    assert len(rows) == 2 and all(r["watts"] == 11.0 for r in rows)
+    assert len(rows) == 2 and all(r["watts"] == 8.0 for r in rows)
     live = json.loads(http("/api/live", headers={"Authorization": auth})[1])
     assert {m["name"] for m in live["miners"]} == {"Pro aus config", "MacBook Air"}
     assert live["totals"]["count"] == 2 and live["totals"]["mining"] == 1 and live["pending_devices"] == 0
@@ -210,14 +210,14 @@ watts = 12.0
     # --- Neuer Wert gilt ab jetzt, erfasste Abfragen behalten ihren Wert
     t_before = time.time()
     time.sleep(1.1)
-    st, _ = http("/geraete/watt", f"id={dev_id}&watts=9,5&note=neu+gemessen+mit+3+Threads".encode(), form=True)
+    st, _ = http("/geraete/watt", f"id={dev_id}&watts=6,5&note=neu+gemessen+mit+3+Threads".encode(), form=True)
     assert st == 200
-    assert devices.watts_at(dev_id, t_before)[0] == 11.0
-    assert devices.watts_at(dev_id, time.time())[0] == 9.5
+    assert devices.watts_at(dev_id, t_before)[0] == 8.0
+    assert devices.watts_at(dev_id, time.time())[0] == 6.5
     miners.poll_once(cfg, last)
     ws = [r["watts"] for r in db.get().execute(
         "SELECT watts FROM power_samples WHERE device='MacBook Air' ORDER BY ts, rowid")]
-    assert ws == [11.0, 11.0, 9.5]
+    assert ws == [8.0, 8.0, 6.5]
     assert len(devices.listing()[0]["watts"]) == 2
 
     # --- Heartbeat: nur mit Geräte-Token; neue IP wird übernommen
@@ -233,7 +233,7 @@ watts = 12.0
     wb = load_workbook(BytesIO(report.build_xlsx(cfg, time.localtime().tm_year)))
     sheet = [[c.value for c in r] for r in wb["Geräte"].iter_rows(min_row=2, max_col=5)]
     air = [r for r in sheet if r[0] == "MacBook Air"]
-    assert [r[1] for r in air] == [11.0, 9.5] and all(r[2] and r[4] == "gekoppelt" for r in air), sheet
+    assert [r[1] for r in air] == [8.0, 6.5] and all(r[2] and r[4] == "gekoppelt" for r in air), sheet
     assert any(r[0] == "Pro aus config" and r[4] == "config.toml" for r in sheet)
 
     # --- Stilllegen: wird nicht mehr abgefragt, Historie bleibt, Name wieder frei

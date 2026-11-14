@@ -7,10 +7,15 @@
 #   deploy/mac/install.sh               einrichten bzw. aktualisieren
 #   deploy/mac/install.sh --uninstall   Agent, App und Skripte entfernen (Einstellungen und Log bleiben)
 #
-# Ohne Rückfragen (alle optional): POOL=<NAS-IP>:3333 THREADS=3 TOKEN=<vorhandenes Token>
-#   AUTOSTART=j|n FIREWALL=j|n START=j|n deploy/mac/install.sh
+# Der Installer sucht den XMR-Ledger im Heimnetz (GET /api/moneta, Port 8090), übernimmt daraus die
+# Pool-Adresse, schlägt Threads nach Geräteprofil vor (optional: einmessen.sh) und koppelt den Rechner mit dem
+# Code aus dem Dashboard (Seite „Geräte“). Ohne Ledger geht es wie bisher mit Pool-Adresse und [[miner]]-Block.
+#
+# Ohne Rückfragen (alle optional): LEDGER=http://<NAS-IP>:8090 POOL=<NAS-IP>:3333 THREADS=3 TOKEN=<Token>
+#   MEASURE=j|n CODE=<Kopplungscode> NAME=<Gerätename> AUTOSTART=j|n FIREWALL=j|n START=j|n install.sh
 #
 # Anleitung: docs/de/setup-mac.md (EN: docs/en/setup-mac.md)
+# shellcheck disable=SC1111  # deutsche Anführungszeichen „…“ in Meldungen sind gewollt
 set -euo pipefail
 
 SRC_DIR="$(cd "$(dirname "$0")" && pwd -P)"
@@ -58,6 +63,34 @@ real_path() {
 
 agent_off() { launchctl bootout "$DOMAIN/$1" >/dev/null 2>&1 || true; }
 
+# json_get '<json>' 'a.b' – Wert aus JSON (python3 kommt mit den Command Line Tools)
+json_get() {
+  python3 -c 'import json,sys
+d=json.loads(sys.argv[1] or "{}")
+for k in sys.argv[2].split("."):
+    d = d.get(k) if isinstance(d, dict) else None
+print("" if d is None else (str(d).lower() if isinstance(d, bool) else d))' "$1" "$2" 2>/dev/null || true
+}
+
+# ledger_probe http://host:port – Antwort von /api/moneta, falls dort ein XMR-Ledger läuft
+ledger_probe() {
+  local out
+  out="$(curl -s -m 2 "$1/api/moneta" 2>/dev/null || true)"
+  case "$out" in *'"moneta-ledger"'*) echo "$out" ;; esac
+}
+
+# Sucht im eigenen /24-Netz parallel nach dem Ledger-Port; gibt die erste Fundstelle aus (http://IP:Port)
+discover_ledger() {
+  local ip prefix port="${LEDGER_PORT:-8090}"
+  ip="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true)"
+  [[ "$ip" =~ ^([0-9]+\.[0-9]+\.[0-9]+)\.[0-9]+$ ]] || return 0
+  prefix="${BASH_REMATCH[1]}"
+  # shellcheck disable=SC2016  # $1/$2 expandiert die innere Shell
+  seq 1 254 | xargs -P 64 -I{} sh -c \
+    'curl -s -m 1 "http://$1.{}:$2/api/moneta" 2>/dev/null | grep -q "\"moneta-ledger\"" && echo "http://$1.{}:$2"' \
+    _ "$prefix" "$port" | sort -t. -k4 -n | head -1
+}
+
 uninstall() {
   say "Moneta Miner entfernen"
   agent_off "$MENU_LABEL"
@@ -75,7 +108,7 @@ uninstall() {
 case "${1:-}" in
   --uninstall) uninstall; exit 0 ;;
   "") ;;
-  -h|--help) sed -n '3,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '3,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
   *) die "Unbekannte Option: $1 (--uninstall, --help)" ;;
 esac
 
@@ -85,7 +118,7 @@ macos_major="$(sw_vers -productVersion | cut -d. -f1)"
 [ "$(uname -m)" = arm64 ] || warn "Kein Apple Silicon – Moneta ist dafür getestet; Intel-Macs sollten aber laufen."
 
 # --- 1. Werkzeuge ------------------------------------------------------------------------------------------
-say "1/6 Werkzeuge"
+say "1/8 Werkzeuge"
 if ! xcode-select -p >/dev/null 2>&1; then
   xcode-select --install || true
   die "Die Command Line Tools werden installiert (Fenster von macOS). Danach install.sh erneut starten."
@@ -116,25 +149,58 @@ ok "Homebrew: $BREW_PREFIX"
 if "$BREW" list --formula xmrig >/dev/null 2>&1; then
   ok "XMRig vorhanden ($("$BREW" list --versions xmrig))"
 else
-  "$BREW" install xmrig    # Homebrew-Build: DONATE 0 %
+  "$BREW" install xmrig    # Homebrew-Build; DONATE 1 % (Upstream-Minimum, wird nicht weggepatcht)
   ok "XMRig installiert ($("$BREW" list --versions xmrig))"
 fi
 XMRIG_BIN="$BREW_PREFIX/bin/xmrig"
 
-# --- 2. Einstellungen --------------------------------------------------------------------------------------
-say "2/6 Einstellungen ($CONF_DIR)"
+# --- 2. Ledger und Pool ------------------------------------------------------------------------------------
+say "2/8 Ledger und Pool ($CONF_DIR)"
 mkdir -p "$CONF_DIR"
 chmod 700 "$CONF_DIR"
+ip="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true)"
+
+ledger="" info="" disc_pool="" pairing=false
+old_ledger="$( { [ -r "$CONF_DIR/ledger" ] && tr -d '[:space:]' < "$CONF_DIR/ledger"; } || true )"
+for cand in "${LEDGER:-}" "$old_ledger"; do
+  [ -n "$cand" ] || continue
+  info="$(ledger_probe "${cand%/}")"
+  if [ -n "$info" ]; then ledger="${cand%/}"; break; fi
+  warn "Unter $cand antwortet kein XMR-Ledger"
+done
+if [ -z "$ledger" ] && [ "${DISCOVER:-j}" != n ]; then
+  echo "  Suche den XMR-Ledger im Heimnetz (Port ${LEDGER_PORT:-8090}) …"
+  ledger="$(discover_ledger || true)"
+  [ -n "$ledger" ] && info="$(ledger_probe "$ledger")"
+fi
+if [ -n "$ledger" ] && [ -n "$info" ]; then
+  ok "Ledger gefunden: $ledger ($(json_get "$info" version))"
+  echo "$ledger" > "$CONF_DIR/ledger"
+  s_host="$(json_get "$info" stratum.host)"
+  if [ -z "$s_host" ]; then s_host="${ledger#http://}"; s_host="${s_host%%:*}"; fi
+  disc_pool="$s_host:$(json_get "$info" stratum.port)"
+  pairing="$(json_get "$info" pairing)"
+else
+  ledger=""
+  warn "Kein Ledger gefunden – Pool-Adresse von Hand angeben (oder LEDGER=http://<NAS-IP>:8090 setzen)."
+fi
 
 old_pool="$( { [ -r "$CONF_DIR/pool" ] && tr -d '[:space:]' < "$CONF_DIR/pool"; } || true )"
 while :; do
-  pool="$(ask "P2Pool-Stratum (<NAS-IP>:3333)" "$old_pool" "${POOL:-}")"
+  pool="$(ask "P2Pool-Stratum (<NAS-IP>:3333)" "${disc_pool:-$old_pool}" "${POOL:-}")"
   if [[ "$pool" =~ ^[A-Za-z0-9.-]+:[0-9]{1,5}$ ]]; then break; fi
   [ -t 0 ] && [ -z "${POOL:-}" ] || die "Ungültige Pool-Adresse: '$pool' (erwartet Host:Port)"
   warn "Bitte als Host:Port angeben, z. B. 192.168.1.10:3333"
 done
 echo "$pool" > "$CONF_DIR/pool"
-ok "Pool: $pool"
+if nc -z -G 3 "${pool%:*}" "${pool##*:}" >/dev/null 2>&1; then
+  ok "Pool: $pool (erreichbar)"
+else
+  warn "Pool $pool antwortet gerade nicht – läuft P2Pool auf der NAS?"
+fi
+
+# --- 3. API-Token ------------------------------------------------------------------------------------------
+say "3/8 API-Token"
 
 token_file="$CONF_DIR/xmrig-token"
 if [ -s "$token_file" ] && [ -z "${TOKEN:-}" ]; then
@@ -155,14 +221,29 @@ fi
 chmod 600 "$token_file"
 token="$(tr -d '[:space:]' < "$token_file")"
 
+# --- 4. Gerät und Threads ---------------------------------------------------------------------------------
+say "4/8 Gerät und Threads"
 ncpu="$(sysctl -n hw.ncpu)"
-pcores="$(sysctl -n hw.perflevel0.physicalcpu 2>/dev/null || echo "?")"
-ecores="$(sysctl -n hw.perflevel1.physicalcpu 2>/dev/null || echo "?")"
+profile="$("$SRC_DIR/profil.sh" 2>/dev/null || echo '{}')"
+suggest="$(json_get "$profile" suggestion.threads)"
+echo "  $(json_get "$profile" model_name) · $(json_get "$profile" chip) · $ncpu Kerne" \
+     "($(json_get "$profile" cores.performance) Performance, $(json_get "$profile" cores.efficiency) Effizienz)"
+echo "  Empfehlung: ${suggest:-all} Threads – $(json_get "$profile" suggestion.source)"
+measure_file="$CONF_DIR/einmessung.json"
+echo "  Genauer: einmessen.sh misst Hashrate und Mehrverbrauch für 2 Thread-Zahlen (mit Lüfter ≈ 10 Min.,"
+echo "  lüfterlos ≈ 25 Min.; Netzteil, sudo, Mac währenddessen nicht benutzen) und schlägt Threads und Watt vor."
+if [ -s "$measure_file" ]; then
+  echo "  Letzte Einmessung: $(json_get "$(cat "$measure_file")" date) – $(json_get "$(cat "$measure_file")" choice.threads) Threads," \
+       "$(json_get "$(cat "$measure_file")" choice.watts) W"
+fi
+if yes_no "Jetzt einmessen?" n "${MEASURE:-}"; then
+  "$SRC_DIR/einmessen.sh" || warn "Einmessen abgebrochen – es geht mit der Empfehlung weiter."
+fi
+measured_threads=""
+[ -s "$measure_file" ] && measured_threads="$(json_get "$(cat "$measure_file")" choice.threads)"
 old_threads="$( { [ -r "$CONF_DIR/threads" ] && tr -d '[:space:]' < "$CONF_DIR/threads"; } || true )"
-echo "  $ncpu Kerne ($pcores Performance, $ecores Effizienz). Lüfterlose Macs drosseln unter Dauerlast –"
-echo "  dort weniger Threads wählen (Referenzwerte in docs/de/setup-mac.md)."
 while :; do
-  threads="$(ask "Threads (Zahl oder all)" "${old_threads:-all}" "${THREADS:-}")"
+  threads="$(ask "Threads (Zahl oder all)" "${old_threads:-${measured_threads:-${suggest:-all}}}" "${THREADS:-}")"
   if [ "$threads" = all ] || { [[ "$threads" =~ ^[0-9]+$ ]] && [ "$threads" -ge 1 ] && [ "$threads" -le "$ncpu" ]; }; then
     break
   fi
@@ -172,11 +253,13 @@ done
 echo "$threads" > "$CONF_DIR/threads"
 ok "Threads: $threads"
 
-# --- 3. Skripte und launchd-Agent --------------------------------------------------------------------------
-say "3/6 Skripte und launchd-Agent"
+# --- 5. Skripte und launchd-Agent --------------------------------------------------------------------------
+say "5/8 Skripte und launchd-Agent"
 mkdir -p "$SUPPORT_DIR" "$AGENT_DIR" "$LOG_DIR"
-install -m 755 "$SRC_DIR/xmrig-start.sh" "$SUPPORT_DIR/xmrig-start.sh"
-install -m 755 "$SRC_DIR/moneta-miner.sh" "$SUPPORT_DIR/moneta-miner.sh"
+for f in xmrig-start.sh moneta-miner.sh profil.sh einmessen.sh; do
+  install -m 755 "$SRC_DIR/$f" "$SUPPORT_DIR/$f"
+done
+install -m 644 "$SRC_DIR/profile.tsv" "$SUPPORT_DIR/profile.tsv"
 ok "Skripte nach $SUPPORT_DIR kopiert"
 
 miner_plist="$AGENT_DIR/$MINER_LABEL.plist"
@@ -240,7 +323,7 @@ plutil -lint -s "$miner_plist"
 ok "launchd-Agent $MINER_LABEL (Autostart: $([ "$run_at_load" = true ] && echo an || echo aus))"
 
 # --- 4. Menüleisten-App ------------------------------------------------------------------------------------
-say '4/6 Menüleisten-App „Moneta Miner“'
+say '6/8 Menüleisten-App „Moneta Miner“'
 app_built=false
 if ! xcrun --find swiftc >/dev/null 2>&1; then
   warn "swiftc fehlt – App wird übersprungen (Command Line Tools aktualisieren: softwareupdate --list)."
@@ -296,7 +379,7 @@ EOF
 fi
 
 # --- 5. Firewall -------------------------------------------------------------------------------------------
-say "5/6 macOS-Firewall"
+say "7/8 macOS-Firewall"
 xmrig_real="$(real_path "$XMRIG_BIN")"
 if "$FW" --getglobalstate 2>/dev/null | grep -qi enabled; then
   echo "  Die Firewall ist an. Der Ledger auf der NAS fragt die XMRig-API (Port $API_PORT) ab;"
@@ -315,30 +398,83 @@ else
   ok "Firewall ist aus – keine Freigabe nötig"
 fi
 
-# --- 6. Eintrag für den Ledger -----------------------------------------------------------------------------
-say "6/6 Eintrag für den Ledger (config.toml auf der NAS)"
-ip="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo '<IP-DES-RECHNERS>')"
-name="$(scutil --get ComputerName 2>/dev/null || hostname -s)"
-name="${name//\\/\\\\}"; name="${name//\"/\\\"}"   # für TOML
-block_file="$CONF_DIR/ledger-miner.toml"
-(umask 077; cat > "$block_file" <<EOF
+# --- 8. Ledger: koppeln oder [[miner]]-Block ----------------------------------------------------------------
+say "8/8 Ledger"
+name="${NAME:-$(scutil --get ComputerName 2>/dev/null || hostname -s)}"
+proposal='{}'
+[ -s "$measure_file" ] && proposal="$(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))["choice"]))' "$measure_file" 2>/dev/null || echo '{}')"
+paired=false
+
+if [ -n "$ledger" ] && [ "$pairing" = true ] && [[ "$ip" =~ ^[0-9.]+$ ]]; then
+  # Kennt der Ledger dieses Token schon? Dann nur IP und Threads melden.
+  resp="$(mktemp)"
+  code_http="$(curl -s -o "$resp" -w '%{http_code}' -m 5 -X POST -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $token" --data "{\"url\":\"http://$ip:$API_PORT\",\"threads\":\"$threads\"}" \
+    "$ledger/api/heartbeat" || true)"
+  if [ "$code_http" = 200 ]; then
+    paired=true
+    st="$(json_get "$(cat "$resp")" status)"
+    ok "Schon gekoppelt als „$(json_get "$(cat "$resp")" name)“ ($([ "$st" = active ] && echo freigegeben || echo "wartet auf Freigabe im Dashboard"))"
+  else
+    echo "  Im Dashboard ($ledger) unter „Geräte“ auf „Neuen Rechner koppeln – Code erzeugen“ klicken"
+    echo "  und den 6-stelligen Code hier eingeben (Enter = überspringen, dann [[miner]]-Block von Hand)."
+    for _ in 1 2 3 4 5; do
+      code="$(ask "Kopplungscode" "" "${CODE:-}")"
+      code="${code// /}"
+      [ -n "$code" ] || break
+      profile_json="$("$SRC_DIR/profil.sh" 2>/dev/null || echo '{}')"
+      body="$(python3 -c 'import json,sys
+code, name, url, token, threads, profile, proposal = sys.argv[1:]
+print(json.dumps({"code": code, "name": name, "url": url, "token": token, "threads": threads,
+                  "profile": json.loads(profile), "proposal": json.loads(proposal)}, ensure_ascii=False))' \
+        "$code" "$name" "http://$ip:$API_PORT" "$token" "$threads" "$profile_json" "$proposal")"
+      code_http="$(curl -s -o "$resp" -w '%{http_code}' -m 10 -X POST -H "Content-Type: application/json" \
+        --data "$body" "$ledger/api/pair" || true)"
+      msg="$(json_get "$(cat "$resp")" error)"
+      case "$code_http" in
+        201) paired=true; ok "Gekoppelt als „$name“ – jetzt im Dashboard unter „Geräte“ freigeben"; break ;;
+        409) warn "$msg"; name="$(ask "Anderer Gerätename" "$name (2)" "")" ;;
+        *)   warn "${msg:-Kopplung fehlgeschlagen (HTTP $code_http)}" ;;
+      esac
+      [ -z "${CODE:-}" ] || break
+    done
+  fi
+  rm -f "$resp"
+  if [ "$paired" = true ]; then touch "$CONF_DIR/paired"; fi
+elif [ -n "$ledger" ] && [ "$pairing" != true ]; then
+  warn "Kopplung ist im Ledger abgeschaltet ([pool] pairing = false)."
+fi
+
+if [ "$paired" = true ]; then
+  if [ "$(json_get "$proposal" watts)" != "" ]; then
+    echo "  Bei der Freigabe stehen Watt und Notiz aus der Einmessung schon im Formular."
+  else
+    echo "  Bei der Freigabe brauchst du den gemessenen Mehrverbrauch (einmessen.sh oder strom-messen.sh)."
+  fi
+else
+  [[ "$ip" =~ ^[0-9.]+$ ]] || ip='<IP-DES-RECHNERS>'
+  toml_name="${name//\\/\\\\}"; toml_name="${toml_name//\"/\\\"}"
+  m_watts="$(json_get "$proposal" watts)"
+  m_note="$(json_get "$proposal" note)"; m_note="${m_note//\"/\\\"}"
+  block_file="$CONF_DIR/ledger-miner.toml"
+  (umask 077; cat > "$block_file" <<EOF
 [[miner]]
-name = "$name"
+name = "$toml_name"
 url = "http://$ip:$API_PORT"
 token = "$token"
-watts = <MEHRVERBRAUCH_W>   # erst nach der Messung eintragen (deploy/mac/strom-messen.sh)
-note = "gemessen am TT.MM.JJJJ mit powermetrics: … W Last − … W Leerlauf; +10 % Netzteil"
+watts = ${m_watts:-<MEHRVERBRAUCH_W>}   # gemessener Mehrverbrauch (einmessen.sh oder strom-messen.sh)
+note = "${m_note:-gemessen am TT.MM.JJJJ mit powermetrics: … W Last − … W Leerlauf; +10 % Netzteil}"
 EOF
-)
-sed 's/^/    /' "$block_file"
-cat <<EOF
+  )
+  sed 's/^/    /' "$block_file"
+  cat <<EOF
 
   Gespeichert in $block_file.
   Reihenfolge: IP $ip im Router fest vergeben → Mehrverbrauch messen → Block in config.toml einfügen
-  (watts ersetzen) → Ledger neu starten. Die Watt werden je Erfassung festgeschrieben; ein falscher Wert
-  lässt sich später nicht korrigieren. Der Ledger zählt Mining-Zeit erst ab dem Eintrag.
-  Steht der Mac schon in der config.toml, nur prüfen, ob token und url übereinstimmen.
+  → Ledger neu starten. Die Watt werden je Erfassung festgeschrieben; ein falscher Wert lässt sich später
+  nicht korrigieren. Der Ledger zählt Mining-Zeit erst ab dem Eintrag.
 EOF
+fi
 
 say "Fertig"
 ctl="$SUPPORT_DIR/moneta-miner.sh"
@@ -349,5 +485,6 @@ elif yes_no "XMRig jetzt starten?" n "${START:-}"; then
 fi
 cat <<EOF
   Steuerung: Menüleiste → Moneta Miner, oder im Terminal:
-    "$ctl" start|stop|status|threads N|autostart on|off|log
+    "$ctl" start|stop|status|threads N|autostart on|off|log|heartbeat
+  Einmessen (Threads und Watt): "$SUPPORT_DIR/einmessen.sh"
 EOF

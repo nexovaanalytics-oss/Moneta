@@ -9,6 +9,7 @@
 #   moneta-miner.sh autostart on|off  XMRig beim Anmelden starten
 #   moneta-miner.sh threads [N|all]   Thread-Zahl anzeigen bzw. setzen (läuft XMRig, startet er neu)
 #   moneta-miner.sh log [-f]          letzte Zeilen des Logs (bzw. mitlesen)
+#   moneta-miner.sh heartbeat         beim gekoppelten Ledger melden (IP, Threads) – läuft nach start automatisch
 set -euo pipefail
 
 LABEL="${MONETA_LABEL:-moneta.xmrig}"
@@ -17,6 +18,7 @@ PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LOG_DIR="$HOME/Library/Logs/Moneta"
 LOG="$LOG_DIR/xmrig.log"
 LOG_MAX_BYTES=$((10 * 1024 * 1024))
+API_PORT="${API_PORT:-18000}"
 DOMAIN="gui/$(id -u)"
 
 die() { echo "$*" >&2; exit 1; }
@@ -35,6 +37,28 @@ threads_state() {
   local t=""
   [ -r "$CONF_DIR/threads" ] && t="$(tr -d '[:space:]' < "$CONF_DIR/threads")"
   echo "${t:-all}"
+}
+
+ledger_url() {
+  [ -r "$CONF_DIR/ledger" ] && tr -d '[:space:]' < "$CONF_DIR/ledger" || true
+}
+
+# Meldet dem Ledger (nach der Kopplung) die aktuelle IP und Thread-Einstellung; übernimmt eine geänderte IP.
+heartbeat() {
+  local url ip token t
+  url="$(ledger_url)"
+  [ -n "$url" ] || die "Kein Ledger gekoppelt ($CONF_DIR/ledger fehlt)"
+  [ -r "$CONF_DIR/xmrig-token" ] || die "Token-Datei fehlt"
+  token="$(tr -d '[:space:]' < "$CONF_DIR/xmrig-token")"
+  ip="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true)"
+  t="$(threads_state)"
+  case "$t" in all|[0-9]*) ;; *) t=all ;; esac
+  local body="{\"threads\":\"$t\""
+  if [[ "$ip" =~ ^[0-9.]+$ ]]; then body="$body,\"url\":\"http://$ip:$API_PORT\""; fi
+  body="$body}"
+  curl -sS -m 5 -X POST -H "Content-Type: application/json" -H "Authorization: Bearer $token" \
+    --data "$body" "$url/api/heartbeat"
+  echo
 }
 
 rotate_log() {
@@ -61,6 +85,7 @@ start() {
     exit 1
   fi
   echo "XMRig läuft (PID $p)."
+  if [ -n "$(ledger_url)" ]; then (heartbeat || true) >/dev/null 2>&1 & fi
 }
 
 stop() {
@@ -75,6 +100,7 @@ restart() {
     rotate_log
     launchctl kickstart -k "$DOMAIN/$LABEL"
     echo "XMRig neu gestartet."
+    if [ -n "$(ledger_url)" ]; then (heartbeat || true) >/dev/null 2>&1 & fi
   else
     start
   fi
@@ -85,14 +111,18 @@ status() {
   p="$(pid)"
   if [ -n "$p" ]; then state=running; else state=stopped; fi
   if [ "${1:-}" = "--plain" ]; then
-    printf 'state=%s\npid=%s\nautostart=%s\nthreads=%s\ncpus=%s\n' \
-      "$state" "$p" "$(autostart_state)" "$(threads_state)" "$(cpu_count)"
+    printf 'state=%s\npid=%s\nautostart=%s\nthreads=%s\ncpus=%s\nledger=%s\npaired=%s\n' \
+      "$state" "$p" "$(autostart_state)" "$(threads_state)" "$(cpu_count)" "$(ledger_url)" \
+      "$([ -e "$CONF_DIR/paired" ] && echo 1 || echo 0)"
     return
   fi
   if [ "$state" = running ]; then echo "XMRig läuft (PID $p)"; else echo "XMRig gestoppt"; fi
   if [ "$(autostart_state)" = 1 ]; then echo "Autostart: an"; else echo "Autostart: aus"; fi
   echo "Threads:   $(threads_state) (von $(cpu_count))"
   echo "Log:       $LOG"
+  if [ -n "$(ledger_url)" ]; then
+    echo "Ledger:    $(ledger_url) ($([ -e "$CONF_DIR/paired" ] && echo gekoppelt || echo nicht gekoppelt))"
+  fi
 }
 
 autostart() {
@@ -125,7 +155,7 @@ log() {
 cmd="${1:-status}"
 [ $# -gt 0 ] && shift
 case "$cmd" in
-  start|stop|restart|status|autostart|threads|log) "$cmd" "$@" ;;
-  -h|--help|help) sed -n '3,11p' "$0" | sed 's/^# \{0,1\}//' ;;
-  *) die "Unbekannter Befehl: $cmd (start|stop|restart|status|autostart|threads|log)" ;;
+  start|stop|restart|status|autostart|threads|log|heartbeat) "$cmd" "$@" ;;
+  -h|--help|help) sed -n '3,12p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) die "Unbekannter Befehl: $cmd (start|stop|restart|status|autostart|threads|log|heartbeat)" ;;
 esac

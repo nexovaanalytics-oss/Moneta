@@ -22,7 +22,7 @@ Los equipos deben poder configurarse sin conocimientos de terminal e iniciarse c
 código fuente en el propio equipo (`swiftc` de las Command Line Tools, que Homebrew necesita de todos modos). Los
 programas compilados localmente no llevan atributo de cuarentena, así que Gatekeeper no pregunta y no hacen falta
 ni una cuenta de desarrollador de Apple de pago ni la notarización. XMRig no se incluye, sino que se instala con
-Homebrew (DONATE 0 %, actualizaciones propias); la app solo controla el agente y lee la API local de XMRig. La
+Homebrew (actualizaciones propias); la app solo controla el agente y lee la API local de XMRig. La
 entrada `[[miner]]` en `config.toml` sigue siendo a propósito un paso manual: los vatios se fijan en cada registro
 y deben medirse antes. Una app firmada y notarizada para descargar queda como opción para más adelante.
 

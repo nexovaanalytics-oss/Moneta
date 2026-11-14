@@ -55,15 +55,15 @@ ct_per_kwh = 35.0
 # token = derselbe Wert wie bei --http-access-token im xmrig-Befehl.
 # watts = gemessener MEHRverbrauch beim Minen (siehe docs/de/setup-mac.md; EN: docs/en/setup-mac.md).
 [[miner]]
-name = "Rechner 1 (z. B. MacBook Pro M3 Pro)"
+name = "Rechner 1 (z. B. MacBook Pro)"
 url = "http://<IP-DES-RECHNERS>:18000"
 token = ""
-watts = 12.0
-note = "Beispiel: gemessen am TT.MM.JJJJ mit powermetrics: 16,8 W Last (11 Threads) - 6,7 W Leerlauf = 10,1 W; +10 % Netzteil, aufgerundet wegen RAM"
+watts = 15.0
+note = "Beispiel: gemessen am TT.MM.JJJJ mit einmessen.sh/powermetrics: <Last> W Last (<n> Threads) - <Leerlauf> W Leerlauf = <Differenz> W; +10 % Netzteil, aufgerundet wegen RAM"
 
 [[miner]]
-name = "Rechner 2 (z. B. MacBook Air M1)"
+name = "Rechner 2 (z. B. MacBook Air)"
 url = "http://<IP-DES-ZWEITEN-RECHNERS>:18000"
 token = ""
-watts = 11.0
-note = "Beispiel: gemessen am TT.MM.JJJJ mit powermetrics: 9,6 W Last - 0,5 W Leerlauf = 9,1 W; +10 % Netzteil, aufgerundet wegen RAM; Betrieb mit 3 Threads"
+watts = 8.0
+note = "Beispiel: gemessen am TT.MM.JJJJ mit einmessen.sh/powermetrics: <Last> W Last (<n> Threads) - <Leerlauf> W Leerlauf = <Differenz> W; +10 % Netzteil, aufgerundet wegen RAM"

@@ -17,9 +17,15 @@ git clone https://github.com/nexovaanalytics-oss/Moneta.git ~/Moneta
 ```
 
 Ce que fait l'installateur :
-- installe Homebrew et XMRig si nécessaire (build Homebrew, DONATE 0 %) ;
-- demande l'adresse du pool et le nombre de threads et crée le jeton d'API – ou reprend un jeton déjà présent
-  dans `config.toml` pour cet ordinateur ;
+- installe Homebrew et XMRig si nécessaire (build Homebrew ; comme tous les builds officiels, il reverse au moins
+  1 % aux développeurs de XMRig, `--donate-level 0` est ignoré) ;
+- **cherche le XMR-Ledger dans le réseau local** (toutes les adresses de votre réseau /24 sur le port 8090,
+  `GET /api/moneta`) et en reprend l'adresse du pool. S'il n'en trouve aucun, il demande l'adresse du pool comme
+  avant (ou indiquez `LEDGER=http://<IP-NAS>:8090`) ;
+- crée le jeton d'API – ou reprend un jeton déjà présent dans `config.toml` pour cet ordinateur ;
+- **propose le nombre de threads** : d'après la table de profils [`deploy/mac/profile.tsv`](../../deploy/mac/profile.tsv)
+  (appareils mesurés) ou selon la règle empirique – sans ventilateur (MacBook Air) : cœurs performance − 1, avec
+  ventilateur : tous les cœurs. Sur demande, il effectue directement la mesure (voir section 3) ;
 - copie les scripts dans `~/Library/Application Support/Moneta/` et crée l'agent launchd `moneta.xmrig`
   (journal `~/Library/Logs/Moneta/xmrig.log`, redémarrage après un plantage, démarrage à l'ouverture de session
   au choix) ;
@@ -29,17 +35,20 @@ Ce que fait l'installateur :
 - si le pare-feu de macOS est actif, autorise les connexions entrantes pour `xmrig` (deux commandes `sudo`,
   après confirmation). Relancez l'installateur après `brew upgrade xmrig` – la règle dépend du chemin du
   programme ;
-- affiche un bloc `[[miner]]` prêt à l'emploi pour le `config.toml` du ledger (également enregistré dans
-  `~/.config/moneta/ledger-miner.toml`).
+- **appaire l'ordinateur avec le ledger** : créez un code d'appairage dans le tableau de bord sous **Geräte** et
+  saisissez-le dans l'installateur. L'ordinateur transmet son nom, son adresse, son jeton, son profil et – s'il a
+  été mesuré – les threads et la surconsommation. Sans ledger ni code, il affiche comme avant un bloc
+  `[[miner]]` (`~/.config/moneta/ledger-miner.toml`).
 
-Ensuite, dans cet ordre : réserver l'IP de l'ordinateur dans le routeur → mesurer la surconsommation
-(section 3) → ajouter le bloc avec les `watts` mesurés dans `config.toml` → `sudo docker restart xmr-ledger` sur
-le NAS → **Miner starten** dans la barre des menus. Les watts sont figés à chaque relevé ; une valeur provisoire
-ne peut pas être corrigée après coup.
+Ensuite : dans le tableau de bord sous **Geräte**, **validez** l'ordinateur avec la surconsommation mesurée
+(préremplie à partir de la mesure) et cliquez sur **Miner starten** dans la barre des menus. Le ledger n'enregistre
+l'ordinateur qu'à partir de la validation ; les watts sont figés à chaque relevé. Une IP fixe dans le routeur
+reste recommandée, mais n'est plus indispensable : à chaque démarrage, l'ordinateur se signale au ledger
+(`moneta-miner.sh heartbeat`) et une IP modifiée est reprise.
 
-Sans questions (p. ex. pour plusieurs ordinateurs) : `POOL=<IP-NAS>:3333 THREADS=3 AUTOSTART=n FIREWALL=j START=n
-~/Moneta/deploy/mac/install.sh`. Désinstaller : `~/Moneta/deploy/mac/install.sh --uninstall` (réglages, journal
-et XMRig sont conservés).
+Sans questions (p. ex. pour plusieurs ordinateurs) : `LEDGER=http://<IP-NAS>:8090 CODE=<code> THREADS=3 MEASURE=n
+AUTOSTART=n FIREWALL=j START=n ~/Moneta/deploy/mac/install.sh`. Désinstaller : `~/Moneta/deploy/mac/install.sh
+--uninstall` (réglages, journal et XMRig sont conservés).
 
 ## 1. Installer XMRig
 
@@ -49,7 +58,7 @@ et XMRig sont conservés).
 echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
 eval "$(/opt/homebrew/bin/brew shellenv)"
 
-brew install xmrig          # build Homebrew : DONATE 0 %
+brew install xmrig          # build Homebrew ; DONATE 1 % (minimum en amont)
 ```
 
 ## 2. Adresse du pool et jeton d'API
@@ -64,6 +73,18 @@ cat ~/.config/moneta/xmrig-token            # à reporter comme token dans le co
 ```
 
 ## 3. Mesurer le hashrate et la surconsommation
+
+**Automatiquement :** `deploy/mac/einmessen.sh` (proposé par l'installateur, ensuite aussi dans
+`~/Library/Application Support/Moneta/einmessen.sh`) mesure la consommation au repos puis, pour deux nombres de
+threads – sans ventilateur : cœurs performance − 1 et tous les cœurs performance ; avec ventilateur : tous les
+cœurs et les cœurs performance –, le hashrate et la puissance, chaque fois après une phase de chauffe (5 min sans
+ventilateur, pour saisir le bridage). La proposition est le meilleur hashrate par watt ; surconsommation =
+(charge − repos) × 1,1, arrondie vers le haut, avec une note prête à l'emploi. Durée ≈ 10 min avec ventilateur,
+≈ 25 min sans ; brancher l'alimentation, ne pas utiliser le Mac pendant ce temps, `sudo` pour `powermetrics`.
+Vos propres candidats : `einmessen.sh 3 4`. La mesure mine déjà via P2Pool. L'appairage transmet le résultat
+(`~/.config/moneta/einmessung.json`) comme proposition.
+
+**À la main :**
 
 Onglet 1 – générer la charge (sans pool), avec le nombre de threads prévu ensuite :
 
@@ -82,13 +103,13 @@ Surconsommation = charge − repos, **+10 %** de pertes de l'alimentation, arron
 RAM (que `powermetrics` ne mesure pas). Reportez le résultat comme `watts`, et la date et la méthode comme `note`,
 dans `config.toml`. Mesurez à nouveau si vous changez le nombre de threads (effet à partir de ce moment).
 
-### Valeurs de référence (11/2026, XMRig 6.26.0, macOS, sans huge pages)
+### Ordres de grandeur
 
-| Appareil | Threads | Hashrate | Surconsommation (powermetrics) | Remarque |
-|---|---|---|---|---|
-| MacBook Pro M3 Pro (11 cœurs) | 11 | ≈ 3 700–3 800 H/s | ≈ 10 W (+10 % → 12 W retenus) | pas de bridage, ≈ 367 H/W |
-| MacBook Pro M3 Pro | 6 | ≈ 2 780 H/s | ≈ 9,7 W | moins efficace |
-| MacBook Air M1 (sans ventilateur) | 4 | ≈ 1 730 → 1 400 H/s | ≈ 9 W (→ 11 W retenus) | bridé après ~5 min |
+Le hashrate et la surconsommation dépendent de la puce, du refroidissement et du nombre de threads. Règles
+empiriques : les Mac avec ventilateur tournent sur tous les cœurs sans bridage notable. Les Mac sans ventilateur
+(MacBook Air) sont bridés sous charge continue après quelques minutes ; cœurs performance − 1 y donne
+généralement le meilleur hashrate par watt. `einmessen.sh` mesure les valeurs de votre appareil ; les
+recommandations de threads par puce figurent dans [`deploy/mac/profile.tsv`](../../deploy/mac/profile.tsv).
 
 Vous avez des mesures pour un autre appareil ? Partagez-les via une issue (« Device measurement ») – voir
 [CONTRIBUTING](../../CONTRIBUTING.fr.md).

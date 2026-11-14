@@ -104,7 +104,7 @@ def _run(DATA):
                 self.send_response(404); self.end_headers(); return
             if self.headers.get("Authorization") != "Bearer tok123":
                 self.send_response(401); self.end_headers(); return
-            body = json.dumps({"paused": False, "uptime": 1234, "hashrate": {"total": [3806.2, 3790.0, None]},
+            body = json.dumps({"paused": False, "uptime": 1234, "hashrate": {"total": [5012.4, 4998.0, None]},
                                "results": {"shares_good": 5}}).encode()
             self.send_response(200)
             self.send_header("Content-Length", str(len(body)))
@@ -147,17 +147,17 @@ valid_from = "2027-01-01"
 ct_per_kwh = 30.0
 
 [[miner]]
-name = "MacBook Pro M3 Pro"
+name = "Rechner 1"
 url = "http://127.0.0.1:{xmrig_port}"
 token = "tok123"
-watts = 12.0
+watts = 15.0
 note = "powermetrics +10 %"
 
 [[miner]]
-name = "MacBook Air M1"
+name = "Rechner 2"
 url = "http://127.0.0.1:{free_port()}"
 token = "x"
-watts = 11.0
+watts = 8.0
 """)
     with open(f"{DATA}/kurse_manuell.csv", "w", encoding="utf-8") as f:
         f.write("# txid oder Datum;EUR\n" + "ee" * 32 + ";1.234,50\n")
@@ -225,17 +225,17 @@ watts = 11.0
     real_sleep(1.2)
     miners.poll_once(cfg, last)
     pd = {r["device"]: dict(r) for r in db.get().execute("SELECT * FROM power_daily")}
-    pro = pd["MacBook Pro M3 Pro"]
+    pro = pd["Rechner 1"]
     assert pro["mining_seconds"] >= 61, pd
-    assert pd["MacBook Air M1"]["mining_seconds"] == 0
+    assert pd["Rechner 2"]["mining_seconds"] == 0
     assert "NAS (Node + Pool)" in pd
-    exp_kwh = 12.0 * pro["mining_seconds"] / 3_600_000
+    exp_kwh = 15.0 * pro["mining_seconds"] / 3_600_000
     assert abs(pro["kwh"] - exp_kwh) < 1e-12 and abs(pro["cost_eur"] - exp_kwh * 0.35) < 1e-12
-    assert miners.live_status()["MacBook Pro M3 Pro"]["mining"] is True
-    assert miners.live_status()["MacBook Air M1"]["reachable"] is False
+    assert miners.live_status()["Rechner 1"]["mining"] is True
+    assert miners.live_status()["Rechner 2"]["reachable"] is False
     dev = {p["device"]: p for p in ledger.power_by_device(cfg, datetime.now(TZ).year)}
-    assert abs(dev["MacBook Pro M3 Pro"]["watts_eff"] - 12.0) < 1e-9
-    assert abs(dev["MacBook Pro M3 Pro"]["tariff_eff"] - cfg.tariff_at(time.time())) < 1e-9
+    assert abs(dev["Rechner 1"]["watts_eff"] - 15.0) < 1e-9
+    assert abs(dev["Rechner 1"]["tariff_eff"] - cfg.tariff_at(time.time())) < 1e-9
 
     # 4) Fristen
     assert ledger.steuerfrei_ab(date(2026, 11, 12)) == date(2027, 11, 13)
@@ -285,14 +285,14 @@ watts = 11.0
     assert "600,00 €" in live["html"]["cards"] and "Stand " in live["html"]["cards"]
     assert live["wallet"]["height"] == 3900100 and live["wallet"]["error"] is None
     mins = {m["name"]: m for m in live["miners"]}
-    assert mins["MacBook Pro M3 Pro"]["mining"] is True and mins["MacBook Air M1"]["reachable"] is False
+    assert mins["Rechner 1"]["mining"] is True and mins["Rechner 2"]["reachable"] is False
     assert "mint" in live["html"]["devices"] and "nicht erreichbar" in live["html"]["devices"]
     assert "0,00030000" in live["html"]["recent"]  # Zufluss aa aus 2026
-    # Summe über alle Geräte: nur der Pro mint (12 W) + NAS (4 W)
+    # Summe über alle Geräte: nur Rechner 1 mint (15 W) + NAS (4 W)
     assert live["totals"]["count"] == 2 and live["totals"]["mining"] == 1
-    assert abs(live["totals"]["hashrate"] - 3806.2) < 1e-6 and live["totals"]["watts"] == 16.0
+    assert abs(live["totals"]["hashrate"] - 5012.4) < 1e-6 and live["totals"]["watts"] == 19.0
     assert "Gesamt" in live["html"]["devices"] and "1 von 2 minen" in live["html"]["devices"]
-    assert "16,0 W" in live["html"]["devices"] and "inkl. NAS 4,0 W" in live["html"]["devices"]
+    assert "19,0 W" in live["html"]["devices"] and "inkl. NAS 4,0 W" in live["html"]["devices"]
     strom = http(f"/strom?jahr={datetime.now(TZ).year}")[1].decode()
     assert "Je Monat, alle Geräte" in strom and "<td>Summe</td>" in strom
     prices._now = lambda: ts(2028, 1, 1)

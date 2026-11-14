@@ -17,9 +17,15 @@ git clone https://github.com/nexovaanalytics-oss/Moneta.git ~/Moneta
 ```
 
 What the installer does:
-- installs Homebrew and XMRig if needed (Homebrew build, DONATE 0 %);
-- asks for the pool address and the number of threads and creates the API token – or takes a token that is
-  already in `config.toml` for this computer;
+- installs Homebrew and XMRig if needed (Homebrew build; like all official builds it donates at least 1 % to the
+  XMRig developers, `--donate-level 0` is ignored);
+- **looks for the XMR ledger in the home network** (every address of your /24 network on port 8090,
+  `GET /api/moneta`) and takes the pool address from it. If none is found, it asks for the pool address as before
+  (or set `LEDGER=http://<NAS-IP>:8090`);
+- creates the API token – or takes a token that is already in `config.toml` for this computer;
+- **suggests the number of threads**: from the profile table [`deploy/mac/profile.tsv`](../../deploy/mac/profile.tsv)
+  (measured devices) or by rule of thumb – fanless (MacBook Air): performance cores − 1, with a fan: all cores.
+  On request it measures right away (see section 3);
 - copies the scripts to `~/Library/Application Support/Moneta/` and creates the launchd agent `moneta.xmrig`
   (log `~/Library/Logs/Moneta/xmrig.log`, restart after a crash, optional autostart at login);
 - builds the menu bar app with `swiftc` from the Command Line Tools into `~/Applications/Moneta Miner.app` and
@@ -27,16 +33,20 @@ What the installer does:
   nor a Gatekeeper exception;
 - if the macOS firewall is on, allows incoming connections for `xmrig` (two `sudo` commands, after asking).
   Run the installer again after `brew upgrade xmrig` – the rule is tied to the program path;
-- prints a ready-made `[[miner]]` block for the ledger's `config.toml` (also saved to
-  `~/.config/moneta/ledger-miner.toml`).
+- **pairs the computer with the ledger**: create a pairing code in the dashboard under **Geräte** and enter it
+  in the installer. The computer reports its name, address, token, device profile and – if measured – threads
+  and extra power draw. Without a ledger or code it prints a `[[miner]]` block as before
+  (`~/.config/moneta/ledger-miner.toml`).
 
-Then, in this order: reserve the computer's IP in the router → measure the extra power draw (section 3) → add the
-block with the measured `watts` to `config.toml` → `sudo docker restart xmr-ledger` on the NAS → **Miner
-starten** in the menu bar. Watts are frozen with every sample; a placeholder value cannot be corrected later.
+Then: in the dashboard under **Geräte**, **approve** the computer with its measured extra power draw (pre-filled
+from the measurement) and click **Miner starten** in the menu bar. The ledger only records the computer from
+approval onwards; watts are frozen with every sample. A fixed IP in the router is still recommended but no longer
+required: on every start the computer reports to the ledger (`moneta-miner.sh heartbeat`), and a changed IP is
+taken over.
 
-Without prompts (e.g. for several computers): `POOL=<NAS-IP>:3333 THREADS=3 AUTOSTART=n FIREWALL=j START=n
-~/Moneta/deploy/mac/install.sh`. Remove: `~/Moneta/deploy/mac/install.sh --uninstall` (settings, log and XMRig
-are kept).
+Without prompts (e.g. for several computers): `LEDGER=http://<NAS-IP>:8090 CODE=<code> THREADS=3 MEASURE=n
+AUTOSTART=n FIREWALL=j START=n ~/Moneta/deploy/mac/install.sh`. Remove: `~/Moneta/deploy/mac/install.sh
+--uninstall` (settings, log and XMRig are kept).
 
 ## 1. Install XMRig
 
@@ -46,7 +56,7 @@ are kept).
 echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
 eval "$(/opt/homebrew/bin/brew shellenv)"
 
-brew install xmrig          # Homebrew build: DONATE 0 %
+brew install xmrig          # Homebrew build; DONATE 1 % (upstream minimum)
 ```
 
 ## 2. Pool address and API token
@@ -61,6 +71,17 @@ cat ~/.config/moneta/xmrig-token            # goes into the ledger's config.toml
 ```
 
 ## 3. Measure hashrate and extra power draw
+
+**Automatically:** `deploy/mac/einmessen.sh` (offered by the installer, afterwards also at
+`~/Library/Application Support/Moneta/einmessen.sh`) measures idle power and, for two thread counts – fanless:
+performance cores − 1 and all performance cores; with a fan: all cores and the performance cores – hashrate and
+power, each after a warm-up (fanless 5 min so that throttling is captured). The suggestion is the best hashrate
+per watt; extra power draw = (load − idle) × 1.1, rounded up, with a ready-made note. Takes ≈ 10 min with a fan,
+≈ 25 min fanless; connect the power adapter, do not use the Mac meanwhile, `sudo` for `powermetrics`. Your own
+candidates: `einmessen.sh 3 4`. The measurement already mines via P2Pool. Pairing sends the result
+(`~/.config/moneta/einmessung.json`) along as a suggestion.
+
+**By hand:**
 
 Tab 1 – generate load (without a pool), using the thread count you intend to run later:
 
@@ -79,13 +100,13 @@ Extra power = load − idle, **+10 %** for power-supply losses, rounded up sligh
 does not measure). Enter the result as `watts`, and the date and method as `note`, in `config.toml`.
 Measure again if you change the thread count (takes effect from then on).
 
-### Reference values (11/2026, XMRig 6.26.0, macOS, no huge pages)
+### Rules of thumb
 
-| Device | Threads | Hashrate | Extra power (powermetrics) | Remarks |
-|---|---|---|---|---|
-| MacBook Pro M3 Pro (11 cores) | 11 | ≈ 3,700–3,800 H/s | ≈ 10 W (+10 % → 12 W used) | no throttling, ≈ 367 H/W |
-| MacBook Pro M3 Pro | 6 | ≈ 2,780 H/s | ≈ 9.7 W | less efficient |
-| MacBook Air M1 (fanless) | 4 | ≈ 1,730 → 1,400 H/s | ≈ 9 W (→ 11 W used) | throttles after ~5 min |
+Hashrate and extra power draw depend on chip, cooling and thread count. Rules of thumb: Macs with a fan run on
+all cores without noticeable throttling. Fanless Macs (MacBook Air) throttle under sustained load after a few
+minutes; there, performance cores − 1 usually gives the better hashrate per watt. `einmessen.sh` measures the
+values for your own device; thread recommendations per chip are in
+[`deploy/mac/profile.tsv`](../../deploy/mac/profile.tsv).
 
 Got numbers for another device? Please share them via an issue ("Device measurement") – see
 [CONTRIBUTING](../../CONTRIBUTING.md).

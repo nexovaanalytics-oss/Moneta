@@ -17,9 +17,15 @@ git clone https://github.com/nexovaanalytics-oss/Moneta.git ~/Moneta
 ```
 
 Qué hace el instalador:
-- instala Homebrew y XMRig si hace falta (build de Homebrew, DONATE 0 %);
-- pide la dirección del pool y el número de hilos y crea el token de la API – o usa un token que ya figure en
-  `config.toml` para este equipo;
+- instala Homebrew y XMRig si hace falta (build de Homebrew; como todos los builds oficiales, dona al menos un 1 %
+  a los desarrolladores de XMRig, `--donate-level 0` se ignora);
+- **busca el XMR-Ledger en la red doméstica** (todas las direcciones de tu red /24 en el puerto 8090,
+  `GET /api/moneta`) y toma de él la dirección del pool. Si no encuentra ninguno, pide la dirección del pool como
+  antes (o indica `LEDGER=http://<IP-NAS>:8090`);
+- crea el token de la API – o usa un token que ya figure en `config.toml` para este equipo;
+- **propone el número de hilos**: según la tabla de perfiles [`deploy/mac/profile.tsv`](../../deploy/mac/profile.tsv)
+  (equipos medidos) o por regla general – sin ventilador (MacBook Air): núcleos de rendimiento − 1; con
+  ventilador: todos los núcleos. Si lo deseas, mide en el momento (ver sección 3);
 - copia los scripts a `~/Library/Application Support/Moneta/` y crea el agente de launchd `moneta.xmrig`
   (registro `~/Library/Logs/Moneta/xmrig.log`, reinicio tras un fallo, inicio al iniciar sesión opcional);
 - compila la app de la barra de menús con `swiftc` de las Command Line Tools en `~/Applications/Moneta Miner.app`
@@ -28,17 +34,20 @@ Qué hace el instalador:
 - si el firewall de macOS está activado, permite conexiones entrantes para `xmrig` (dos comandos `sudo`, tras
   preguntar). Tras `brew upgrade xmrig`, vuelve a ejecutar el instalador: la regla depende de la ruta del
   programa;
-- muestra un bloque `[[miner]]` listo para el `config.toml` del ledger (también guardado en
-  `~/.config/moneta/ledger-miner.toml`).
+- **empareja el equipo con el ledger**: crea un código de emparejamiento en el panel en **Geräte** e introdúcelo
+  en el instalador. El equipo envía su nombre, dirección, token, perfil y, si se ha medido, los hilos y el
+  consumo adicional. Sin ledger o sin código, muestra como antes un bloque `[[miner]]`
+  (`~/.config/moneta/ledger-miner.toml`).
 
-Después, en este orden: reservar la IP del equipo en el router → medir el consumo adicional (sección 3) → añadir
-el bloque con los `watts` medidos a `config.toml` → `sudo docker restart xmr-ledger` en el NAS → **Miner
-starten** en la barra de menús. Los vatios se fijan en cada registro; un valor provisional no se puede corregir
-después.
+Después: en el panel, en **Geräte**, **aprueba** el equipo con el consumo adicional medido (rellenado a partir de
+la medición) y pulsa **Miner starten** en la barra de menús. El ledger registra el equipo solo a partir de la
+aprobación; los vatios se fijan en cada registro. Una IP fija en el router sigue siendo recomendable, pero ya no
+es imprescindible: en cada arranque el equipo se notifica al ledger (`moneta-miner.sh heartbeat`) y se adopta una
+IP cambiada.
 
-Sin preguntas (p. ej. para varios equipos): `POOL=<IP-NAS>:3333 THREADS=3 AUTOSTART=n FIREWALL=j START=n
-~/Moneta/deploy/mac/install.sh`. Desinstalar: `~/Moneta/deploy/mac/install.sh --uninstall` (se conservan los
-ajustes, el registro y XMRig).
+Sin preguntas (p. ej. para varios equipos): `LEDGER=http://<IP-NAS>:8090 CODE=<código> THREADS=3 MEASURE=n
+AUTOSTART=n FIREWALL=j START=n ~/Moneta/deploy/mac/install.sh`. Desinstalar: `~/Moneta/deploy/mac/install.sh
+--uninstall` (se conservan los ajustes, el registro y XMRig).
 
 ## 1. Instalar XMRig
 
@@ -48,7 +57,7 @@ ajustes, el registro y XMRig).
 echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
 eval "$(/opt/homebrew/bin/brew shellenv)"
 
-brew install xmrig          # build de Homebrew: DONATE 0 %
+brew install xmrig          # build de Homebrew; DONATE 1 % (mínimo de upstream)
 ```
 
 ## 2. Dirección del pool y token de la API
@@ -63,6 +72,18 @@ cat ~/.config/moneta/xmrig-token            # va como token en el config.toml de
 ```
 
 ## 3. Medir hashrate y consumo adicional
+
+**Automáticamente:** `deploy/mac/einmessen.sh` (lo ofrece el instalador; después también en
+`~/Library/Application Support/Moneta/einmessen.sh`) mide el consumo en reposo y, para dos números de hilos – sin
+ventilador: núcleos de rendimiento − 1 y todos los núcleos de rendimiento; con ventilador: todos los núcleos y los
+núcleos de rendimiento –, el hashrate y la potencia, siempre tras un calentamiento (5 min sin ventilador, para
+captar la limitación térmica). La propuesta es el mejor hashrate por vatio; consumo adicional = (carga − reposo) ×
+1,1, redondeado hacia arriba, con una nota lista. Dura ≈ 10 min con ventilador y ≈ 25 min sin él; conecta el
+cargador, no uses el Mac mientras tanto, `sudo` para `powermetrics`. Candidatos propios: `einmessen.sh 3 4`. La
+medición ya mina a través de P2Pool. El emparejamiento envía el resultado (`~/.config/moneta/einmessung.json`)
+como propuesta.
+
+**A mano:**
 
 Pestaña 1 – generar carga (sin pool), con el número de hilos que usarás después:
 
@@ -81,13 +102,13 @@ Consumo adicional = carga − reposo, **+10 %** por pérdidas de la fuente de al
 hacia arriba por la RAM (que `powermetrics` no mide). Anota el resultado como `watts`, y la fecha y el método
 como `note`, en `config.toml`. Vuelve a medir si cambias el número de hilos (se aplica desde ese momento).
 
-### Valores de referencia (11/2026, XMRig 6.26.0, macOS, sin huge pages)
+### Valores orientativos
 
-| Equipo | Hilos | Hashrate | Consumo adicional (powermetrics) | Observación |
-|---|---|---|---|---|
-| MacBook Pro M3 Pro (11 núcleos) | 11 | ≈ 3700–3800 H/s | ≈ 10 W (+10 % → 12 W aplicados) | sin limitación térmica, ≈ 367 H/W |
-| MacBook Pro M3 Pro | 6 | ≈ 2780 H/s | ≈ 9,7 W | menos eficiente |
-| MacBook Air M1 (sin ventilador) | 4 | ≈ 1730 → 1400 H/s | ≈ 9 W (→ 11 W aplicados) | se limita tras ~5 min |
+El hashrate y el consumo adicional dependen del chip, la refrigeración y el número de hilos. Reglas generales:
+los Mac con ventilador funcionan con todos los núcleos sin limitación apreciable. Los Mac sin ventilador (MacBook
+Air) se limitan bajo carga continua tras unos minutos; ahí, núcleos de rendimiento − 1 suele dar el mejor
+hashrate por vatio. `einmessen.sh` mide los valores de tu equipo; las recomendaciones de hilos por chip están en
+[`deploy/mac/profile.tsv`](../../deploy/mac/profile.tsv).
 
 ¿Tienes mediciones de otro equipo? Compártelas mediante un issue ("Device measurement"); consulta
 [CONTRIBUTING](../../CONTRIBUTING.es.md).

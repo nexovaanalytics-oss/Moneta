@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-latest   # festes Label (z. B. macos-14) wird irgendwann abgekündigt
     steps:
       - uses: actions/checkout@v4
       - name: Info.plist prüfen

@@ -5,6 +5,17 @@
 Pourquoi Moneta est construit ainsi. Ajouter les nouvelles entrées en haut (date, contexte, décision,
 conséquences). La [version allemande](../de/design-decisions.md) sert de référence.
 
+### D-09 · 13/11/2026 – Démarrage du mineur via une application de barre des menus, compilée localement plutôt que distribuée signée
+Les ordinateurs doivent pouvoir être configurés sans connaissance du terminal et démarrés d'un clic. Un
+installateur (`deploy/mac/install.sh`) configure XMRig comme agent launchd et compile l'application de barre des
+menus à partir du code source sur l'ordinateur lui-même (`swiftc` des Command Line Tools, dont Homebrew a de toute
+façon besoin). Les programmes compilés localement ne portent pas d'attribut de quarantaine ; Gatekeeper ne pose donc
+pas de question, et ni compte développeur Apple payant ni notarisation ne sont nécessaires. XMRig n'est pas fourni
+mais installé via Homebrew (DONATE 0 %, mises à jour propres) ; l'application ne fait que piloter l'agent et lire
+l'API locale de XMRig. L'entrée `[[miner]]` dans `config.toml` reste volontairement une étape manuelle : les watts
+sont figés à chaque relevé et doivent être mesurés au préalable. Une application signée et notarisée à télécharger
+reste une option pour plus tard.
+
 ### D-08 · 13/11/2026 – Multilingue et ouvert aux contributions
 Moneta doit être utilisable au-delà des pays germanophones et inviter à participer. La langue du projet pour les
 fichiers communautaires (README, CONTRIBUTING, CHANGELOG, SECURITY, modèles) est l'anglais ; le README, le guide

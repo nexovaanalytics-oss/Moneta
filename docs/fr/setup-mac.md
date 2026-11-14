@@ -5,6 +5,42 @@
 Rédigé pour macOS sur Apple Silicon ; sous Linux, les étapes sont analogues (XMRig via le gestionnaire de paquets
 ou xmrig.com, mesure de la consommation p. ex. avec une prise wattmètre).
 
+## Installation rapide : installateur et application de barre des menus
+
+L'installateur couvre les étapes 1, 2 et 4 et configure XMRig comme agent launchd avec l'application de barre
+des menus **Moneta Miner** (macOS 13 ou plus récent). Il peut être relancé sans risque (p. ex. après
+`git pull`) ; les réglages existants sont conservés.
+
+```bash
+git clone https://github.com/nexovaanalytics-oss/Moneta.git ~/Moneta
+~/Moneta/deploy/mac/install.sh
+```
+
+Ce que fait l'installateur :
+- installe Homebrew et XMRig si nécessaire (build Homebrew, DONATE 0 %) ;
+- demande l'adresse du pool et le nombre de threads et crée le jeton d'API – ou reprend un jeton déjà présent
+  dans `config.toml` pour cet ordinateur ;
+- copie les scripts dans `~/Library/Application Support/Moneta/` et crée l'agent launchd `moneta.xmrig`
+  (journal `~/Library/Logs/Moneta/xmrig.log`, redémarrage après un plantage, démarrage à l'ouverture de session
+  au choix) ;
+- compile l'application de barre des menus avec `swiftc` des Command Line Tools dans
+  `~/Applications/Moneta Miner.app` et la lance à l'ouverture de session. Comme elle est compilée sur
+  l'ordinateur lui-même, elle ne nécessite ni compte développeur Apple ni exception Gatekeeper ;
+- si le pare-feu de macOS est actif, autorise les connexions entrantes pour `xmrig` (deux commandes `sudo`,
+  après confirmation). Relancez l'installateur après `brew upgrade xmrig` – la règle dépend du chemin du
+  programme ;
+- affiche un bloc `[[miner]]` prêt à l'emploi pour le `config.toml` du ledger (également enregistré dans
+  `~/.config/moneta/ledger-miner.toml`).
+
+Ensuite, dans cet ordre : réserver l'IP de l'ordinateur dans le routeur → mesurer la surconsommation
+(section 3) → ajouter le bloc avec les `watts` mesurés dans `config.toml` → `sudo docker restart xmr-ledger` sur
+le NAS → **Miner starten** dans la barre des menus. Les watts sont figés à chaque relevé ; une valeur provisoire
+ne peut pas être corrigée après coup.
+
+Sans questions (p. ex. pour plusieurs ordinateurs) : `POOL=<IP-NAS>:3333 THREADS=3 AUTOSTART=n FIREWALL=j START=n
+~/Moneta/deploy/mac/install.sh`. Désinstaller : `~/Moneta/deploy/mac/install.sh --uninstall` (réglages, journal
+et XMRig sont conservés).
+
 ## 1. Installer XMRig
 
 ```bash
@@ -61,8 +97,23 @@ Vous avez des mesures pour un autre appareil ? Partagez-les via une issue (« De
 
 Seulement une fois le nœud synchronisé et P2Pool « healthy » :
 
+Avec l'installateur : barre des menus → **Moneta Miner** → *Miner starten* / *Miner stoppen* (démarrer /
+arrêter) ; on y trouve aussi les threads, le démarrage à l'ouverture de session, le hashrate, la connexion au pool
+et le journal. La même chose dans le terminal :
+
 ```bash
-deploy/mac/xmrig-start.sh        # tous les cœurs
+MM="$HOME/Library/Application Support/Moneta/moneta-miner.sh"
+"$MM" start                  # ou stop, restart
+"$MM" status
+"$MM" threads 3              # ou : all – redémarre XMRig s'il tourne
+"$MM" autostart on           # ou : off
+"$MM" log -f
+```
+
+Sans l'installateur, à la main au premier plan :
+
+```bash
+deploy/mac/xmrig-start.sh        # threads de ~/.config/moneta/threads, sinon tous les cœurs
 deploy/mac/xmrig-start.sh 3      # 3 threads
 ```
 

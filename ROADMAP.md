@@ -30,7 +30,7 @@ Labels: 🟢 good first issue · 🟡 help wanted · 🔵 needs design discussio
 | | Idea | Notes |
 |---|---|---|
 | 🟡 | **arm64 image** (Raspberry Pi 5, ARM-based NAS) | Multi-arch build in GitHub Actions; download the matching Monero CLI (`linux-armv8`) with checksum verification. |
-| 🟢 | **macOS autostart via launchd** | Start XMRig on login/power, stop on battery – as a documented `.plist`. |
+| 🟡 | **Signed, notarized download of the menu bar app** | One-click install without Terminal for other users; needs an Apple Developer ID and notarization (see design decision D-09). |
 | 🟡 | **Node and P2Pool status in the dashboard** | Sync height, peers, P2Pool shares in the PPLNS window – read-only, LAN only. |
 | 🟢 | **Guide: HTTPS via reverse proxy** | e.g. DSM reverse proxy or Caddy in front of the dashboard. |
 | 🔵 | **Notifications** | New payout, device offline, sync stalled. Must not leak payout times to third parties – local or self-hosted channels first. |

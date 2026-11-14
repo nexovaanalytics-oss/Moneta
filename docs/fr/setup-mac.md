@@ -103,13 +103,13 @@ Surconsommation = charge − repos, **+10 %** de pertes de l'alimentation, arron
 RAM (que `powermetrics` ne mesure pas). Reportez le résultat comme `watts`, et la date et la méthode comme `note`,
 dans `config.toml`. Mesurez à nouveau si vous changez le nombre de threads (effet à partir de ce moment).
 
-### Valeurs de référence (11/2026, XMRig 6.26.0, macOS, sans huge pages)
+### Ordres de grandeur
 
-| Appareil | Threads | Hashrate | Surconsommation (powermetrics) | Remarque |
-|---|---|---|---|---|
-| MacBook Pro M3 Pro (11 cœurs) | 11 | ≈ 3 700–3 800 H/s | ≈ 10 W (+10 % → 12 W retenus) | pas de bridage, ≈ 367 H/W |
-| MacBook Pro M3 Pro | 6 | ≈ 2 780 H/s | ≈ 9,7 W | moins efficace |
-| MacBook Air M1 (sans ventilateur) | 4 | ≈ 1 730 → 1 400 H/s | ≈ 9 W (→ 11 W retenus) | bridé après ~5 min |
+Le hashrate et la surconsommation dépendent de la puce, du refroidissement et du nombre de threads. Règles
+empiriques : les Mac avec ventilateur tournent sur tous les cœurs sans bridage notable. Les Mac sans ventilateur
+(MacBook Air) sont bridés sous charge continue après quelques minutes ; cœurs performance − 1 y donne
+généralement le meilleur hashrate par watt. `einmessen.sh` mesure les valeurs de votre appareil ; les
+recommandations de threads par puce figurent dans [`deploy/mac/profile.tsv`](../../deploy/mac/profile.tsv).
 
 Vous avez des mesures pour un autre appareil ? Partagez-les via une issue (« Device measurement ») – voir
 [CONTRIBUTING](../../CONTRIBUTING.fr.md).

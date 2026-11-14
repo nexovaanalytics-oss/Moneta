@@ -102,13 +102,13 @@ Consumo adicional = carga − reposo, **+10 %** por pérdidas de la fuente de al
 hacia arriba por la RAM (que `powermetrics` no mide). Anota el resultado como `watts`, y la fecha y el método
 como `note`, en `config.toml`. Vuelve a medir si cambias el número de hilos (se aplica desde ese momento).
 
-### Valores de referencia (11/2026, XMRig 6.26.0, macOS, sin huge pages)
+### Valores orientativos
 
-| Equipo | Hilos | Hashrate | Consumo adicional (powermetrics) | Observación |
-|---|---|---|---|---|
-| MacBook Pro M3 Pro (11 núcleos) | 11 | ≈ 3700–3800 H/s | ≈ 10 W (+10 % → 12 W aplicados) | sin limitación térmica, ≈ 367 H/W |
-| MacBook Pro M3 Pro | 6 | ≈ 2780 H/s | ≈ 9,7 W | menos eficiente |
-| MacBook Air M1 (sin ventilador) | 4 | ≈ 1730 → 1400 H/s | ≈ 9 W (→ 11 W aplicados) | se limita tras ~5 min |
+El hashrate y el consumo adicional dependen del chip, la refrigeración y el número de hilos. Reglas generales:
+los Mac con ventilador funcionan con todos los núcleos sin limitación apreciable. Los Mac sin ventilador (MacBook
+Air) se limitan bajo carga continua tras unos minutos; ahí, núcleos de rendimiento − 1 suele dar el mejor
+hashrate por vatio. `einmessen.sh` mide los valores de tu equipo; las recomendaciones de hilos por chip están en
+[`deploy/mac/profile.tsv`](../../deploy/mac/profile.tsv).
 
 ¿Tienes mediciones de otro equipo? Compártelas mediante un issue ("Device measurement"); consulta
 [CONTRIBUTING](../../CONTRIBUTING.es.md).

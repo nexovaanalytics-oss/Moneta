@@ -100,13 +100,13 @@ Extra power = load − idle, **+10 %** for power-supply losses, rounded up sligh
 does not measure). Enter the result as `watts`, and the date and method as `note`, in `config.toml`.
 Measure again if you change the thread count (takes effect from then on).
 
-### Reference values (11/2026, XMRig 6.26.0, macOS, no huge pages)
+### Rules of thumb
 
-| Device | Threads | Hashrate | Extra power (powermetrics) | Remarks |
-|---|---|---|---|---|
-| MacBook Pro M3 Pro (11 cores) | 11 | ≈ 3,700–3,800 H/s | ≈ 10 W (+10 % → 12 W used) | no throttling, ≈ 367 H/W |
-| MacBook Pro M3 Pro | 6 | ≈ 2,780 H/s | ≈ 9.7 W | less efficient |
-| MacBook Air M1 (fanless) | 4 | ≈ 1,730 → 1,400 H/s | ≈ 9 W (→ 11 W used) | throttles after ~5 min |
+Hashrate and extra power draw depend on chip, cooling and thread count. Rules of thumb: Macs with a fan run on
+all cores without noticeable throttling. Fanless Macs (MacBook Air) throttle under sustained load after a few
+minutes; there, performance cores − 1 usually gives the better hashrate per watt. `einmessen.sh` measures the
+values for your own device; thread recommendations per chip are in
+[`deploy/mac/profile.tsv`](../../deploy/mac/profile.tsv).
 
 Got numbers for another device? Please share them via an issue ("Device measurement") – see
 [CONTRIBUTING](../../CONTRIBUTING.md).

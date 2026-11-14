@@ -100,13 +100,13 @@ Mehrverbrauch = Last − Leerlauf, **+10 %** Netzteilverluste, wegen Arbeitsspei
 nicht) leicht aufrunden. Ergebnis als `watts`, Datum und Methode als `note` in die `config.toml`.
 Bei geänderten Threads neu messen (wirkt ab dann).
 
-### Referenzwerte (11/2026, XMRig 6.26.0, macOS, ohne Huge Pages)
+### Richtwerte
 
-| Gerät | Threads | Hashrate | Mehrverbrauch (powermetrics) | Bemerkung |
-|---|---|---|---|---|
-| MacBook Pro M3 Pro (11 Kerne) | 11 | ≈ 3.700–3.800 H/s | ≈ 10 W (+10 % → 12 W angesetzt) | kein Drosseln, ≈ 367 H/W |
-| MacBook Pro M3 Pro | 6 | ≈ 2.780 H/s | ≈ 9,7 W | weniger effizient |
-| MacBook Air M1 (lüfterlos) | 4 | ≈ 1.730 → 1.400 H/s | ≈ 9 W (→ 11 W angesetzt) | drosselt nach ~5 Min. |
+Hashrate und Mehrverbrauch hängen von Chip, Kühlung und Thread-Zahl ab. Faustregeln: Macs mit Lüfter laufen mit
+allen Kernen ohne nennenswertes Drosseln. Lüfterlose Macs (MacBook Air) drosseln unter Dauerlast nach einigen
+Minuten; dort bringen Performance-Kerne − 1 meist die bessere Hashrate je Watt. Die Werte für das eigene Gerät
+liefert `einmessen.sh`, Thread-Empfehlungen je Chip stehen in
+[`deploy/mac/profile.tsv`](../../deploy/mac/profile.tsv).
 
 Messwerte für ein anderes Gerät? Gern per Issue („Device measurement“) teilen – siehe
 [CONTRIBUTING](../../CONTRIBUTING.de.md).

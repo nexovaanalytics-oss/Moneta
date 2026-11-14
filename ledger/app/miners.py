@@ -18,6 +18,7 @@ from datetime import datetime
 
 import activity
 import db
+import devices
 from config import Config, Miner
 
 log = logging.getLogger("miners")
@@ -28,6 +29,12 @@ _live: dict[str, dict] = {}  # letzter Status je Gerät fürs Dashboard
 
 def live_status() -> dict[str, dict]:
     return dict(_live)
+
+
+def current(cfg: Config, now: float | None = None) -> list[Miner]:
+    """Alle abzufragenden Rechner: [[miner]] aus config.toml plus im Dashboard gekoppelte und freigegebene.
+    Watt der gekoppelten Rechner = Wert, der zum Zeitpunkt now gilt."""
+    return list(cfg.miners) + devices.active_miners(now)
 
 
 def fetch_summary(m: Miner, timeout: int = 5) -> dict | None:
@@ -55,7 +62,8 @@ _warned: set[str] = set()
 
 def _auth_warn(m: Miner) -> None:
     if m.name not in _warned:
-        log.warning("%s: XMRig-API lehnt das Token ab – token in config.toml prüfen", m.name)
+        where = "token in config.toml" if m.source == "config" else "Kopplung im Dashboard (Geräte)"
+        log.warning("%s: XMRig-API lehnt das Token ab – %s prüfen", m.name, where)
         _warned.add(m.name)
 
 
@@ -99,7 +107,7 @@ def poll_once(cfg: Config, last: dict[str, float]) -> None:
     now = time.time()
     cap = 2 * cfg.poll_seconds
 
-    for m in cfg.miners:
+    for m in current(cfg, now):
         s = fetch_summary(m)
         reachable = s is not None
         paused = bool(s.get("paused")) if s else True

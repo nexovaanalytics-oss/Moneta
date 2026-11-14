@@ -16,6 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import activity
 import db
+import devices
 import ledger
 import miners
 import prices
@@ -91,7 +92,7 @@ button.sec{background:#eef0f3;color:var(--ink)}footer{margin-top:40px;color:var(
 
 NAV = [("/", "Übersicht"), ("/zufluesse", "Zuflüsse"), ("/strom", "Strom"), ("/auswertung", "Auswertung"),
        ("/lose", "Lose"),
-       ("/abgaenge", "Abgänge"), ("/rechner", "Verkaufs-Rechner")]
+       ("/abgaenge", "Abgänge"), ("/rechner", "Verkaufs-Rechner"), ("/geraete", "Geräte")]
 
 
 def page(path: str, title: str, body: str, refresh: int | None = None) -> str:
@@ -189,9 +190,10 @@ def _ov_sync() -> str:
             f'zuletzt {tsfmt(wsync)}' if wsync else '<span class="pill mut">noch kein Abgleich</span>')
 
 
-def _ov_devices(live) -> str:
+def _ov_devices(live, ms=None) -> str:
+    ms = miners.current(CFG) if ms is None else ms
     rows = ""
-    for m in CFG.miners:
+    for m in ms:
         st = live.get(m.name)
         if not st:
             state = '<span class="pill mut">noch keine Abfrage</span>'
@@ -204,9 +206,9 @@ def _ov_devices(live) -> str:
         rows += (f"<tr><td>{esc(m.name)}</td><td>{state}</td>"
                  f"<td class='n'>{de(st['hashrate'], 0) if st else '–'} H/s</td>"
                  f"<td class='n'>{de(m.watts, 1)} W</td><td class='mut'>{tsfmt(st['ts']) if st else '–'}</td></tr>")
-    t = device_totals(live)
+    t = device_totals(live, ms)
     total = ""
-    if CFG.miners:
+    if ms:
         nas = f"inkl. NAS {de(CFG.nas_extra_watts, 1)} W" if CFG.nas_extra_watts > 0 else ""
         total = (f"<tr style='font-weight:600;background:#f0f2f5'><td>Gesamt</td>"
                  f"<td>{t['mining']} von {t['count']} minen</td>"
@@ -214,13 +216,14 @@ def _ov_devices(live) -> str:
                  f"<td class='mut' style='font-weight:400'>{nas}</td></tr>")
     return (f"<tr><th>Gerät</th><th>Status</th><th class='n'>Hashrate</th>"
             f"<th class='n'>Mehrverbrauch</th><th>letzte Abfrage</th></tr>"
-            f"{rows or '<tr><td colspan=5 class=mut>Keine Rechner in config.toml</td></tr>'}{total}")
+            f"{rows or '<tr><td colspan=5 class=mut>Noch keine Rechner – unter <a href="/geraete">Geräte</a> koppeln</td></tr>'}{total}")
 
 
-def device_totals(live) -> dict:
+def device_totals(live, ms=None) -> dict:
     """Summe über alle Rechner: Hashrate und Mehrverbrauch der gerade minenden Geräte (+ NAS, falls angesetzt)."""
-    active = [m for m in CFG.miners if (live.get(m.name) or {}).get("mining")]
-    return {"count": len(CFG.miners), "mining": len(active),
+    ms = miners.current(CFG) if ms is None else ms
+    active = [m for m in ms if (live.get(m.name) or {}).get("mining")]
+    return {"count": len(ms), "mining": len(active),
             "hashrate": sum(live[m.name]["hashrate"] or 0.0 for m in active),
             "watts": sum(m.watts for m in active) + max(CFG.nas_extra_watts, 0.0)}
 
@@ -242,6 +245,7 @@ def overview_live(year: int) -> dict:
     h = ledger.holdings(CFG)
     cur = prices.current_price_point(CFG)
     live = miners.live_status()
+    ms = miners.current(CFG)
     wh = db.get_meta("wallet_height")
     ws = db.get_meta("wallet_last_sync")
     return {
@@ -253,10 +257,11 @@ def overview_live(year: int) -> dict:
         "miners": [{"name": m.name, "reachable": (live.get(m.name) or {}).get("reachable"),
                     "mining": (live.get(m.name) or {}).get("mining"),
                     "hashrate": (live.get(m.name) or {}).get("hashrate"),
-                    "ts": (live.get(m.name) or {}).get("ts")} for m in CFG.miners],
-        "totals": device_totals(live),
+                    "ts": (live.get(m.name) or {}).get("ts")} for m in ms],
+        "totals": device_totals(live, ms),
+        "pending_devices": devices.pending_count(),
         "html": {"warn": _ov_warn(s), "cards": _ov_cards(year, s, h, cur), "sync": _ov_sync(),
-                 "devices": _ov_devices(live), "recent": _ov_recent(s)},
+                 "devices": _ov_devices(live, ms), "recent": _ov_recent(s)},
     }
 
 
@@ -267,12 +272,20 @@ def p_overview(q) -> str:
             f"style='vertical-align:middle'>Live-Update aus</span></h1>"
             f"<div data-live='warn'>{d['warn']}</div><div class='grid' data-live='cards'>{d['cards']}</div>"
             f"<h2>Wallet-Abgleich</h2><p data-live='sync'>{d['sync']}</p>"
-            f"<h2>Geräte</h2><table data-live='devices'>{d['devices']}</table>"
+            f"<h2>Geräte</h2>{_ov_pending()}<table data-live='devices'>{d['devices']}</table>"
             f"<h2>Letzte Auszahlungen</h2><table data-live='recent'>{d['recent']}</table>"
             f'<h2>Jahresbericht</h2><p><a class="btn" href="/bericht.xlsx?jahr={year}">Excel-Bericht {year}</a> '
             f'<a class="btn" style="background:#475467" href="/zufluesse.csv?jahr={year}">Zuflüsse als CSV</a></p>'
             f"<script>{LIVE_JS % (LIVE_SECONDS * 1000)}</script>")
     return page("/", "Übersicht", body, refresh=120)
+
+
+def _ov_pending() -> str:
+    n = devices.pending_count()
+    if not n:
+        return ""
+    return (f'<p class="note">{n} neue(r) Rechner wartet/warten auf Freigabe – '
+            f'<a href="/geraete">unter „Geräte“ prüfen und freigeben</a>.</p>')
 
 
 def p_inflows(q) -> str:
@@ -643,6 +656,100 @@ def p_calc(q) -> str:
     return page("/rechner", "Verkaufs-Rechner", body)
 
 
+def _profile_text(p: dict) -> str:
+    parts = [str(p.get(k)) for k in ("model_name", "model", "chip") if p.get(k)]
+    cores = p.get("cores") or {}
+    if isinstance(cores, dict) and cores.get("total"):
+        perf, eff = cores.get("performance"), cores.get("efficiency")
+        parts.append(f"{cores['total']} Kerne" + (f" ({perf} P / {eff} E)" if perf and eff else ""))
+    if p.get("fanless"):
+        parts.append("lüfterlos")
+    if p.get("os"):
+        parts.append(str(p["os"]))
+    return " · ".join(esc(x) for x in parts) or "–"
+
+
+def p_devices(q, msg: str = "") -> str:
+    now = datetime.now(CFG.tz).timestamp()
+    code = devices.active_code(now)
+    if not CFG.pairing:
+        code_html = "<p class='mut'>Kopplung ist in config.toml abgeschaltet (<span class=mono>[pool] pairing = false</span>).</p>"
+    elif code:
+        mins = max(1, int((code["expires"] - now) // 60))
+        code_html = (f"<div class='card' style='max-width:420px'><div class='k'>Kopplungscode</div>"
+                     f"<div class='v mono' style='font-size:30px;letter-spacing:4px'>{code['code'][:3]} {code['code'][3:]}</div>"
+                     f"<div class='s'>gültig bis {tsfmt(code['expires'])} (noch ≈ {mins} Min.), nur einmal verwendbar"
+                     f"</div></div><p class='mut'>Diesen Code im Installer des neuen Rechners eingeben. "
+                     f"Nach fünf Fehlversuchen wird er ungültig.</p>"
+                     f"<form method='post' action='/geraete/code'><input type='hidden' name='aktion' value='abbrechen'>"
+                     f"<button class='sec'>Code verwerfen</button></form>")
+    else:
+        code_html = ("<form method='post' action='/geraete/code'><button>Neuen Rechner koppeln – Code erzeugen</button>"
+                     "</form><p class='mut'>Der Code ist 10 Minuten gültig. Danach meldet sich der Rechner hier und "
+                     "wird erst nach deiner Freigabe abgefragt.</p>")
+
+    listing = devices.listing()
+    pend = ""
+    for d in [x for x in listing if x["status"] == "pending"]:
+        pr = d["proposal"]
+        w = pr.get("watts")
+        note = pr.get("note") or ""
+        thr = pr.get("threads") or d["threads"]
+        pend += (f"<tr><td><b>{esc(d['name'])}</b><div class='mut mono'>{esc(d['url'])}</div></td>"
+                 f"<td>{_profile_text(d['profile'])}<div class='mut'>Threads: {esc(d['threads'])}"
+                 f"{f' · Vorschlag: {esc(thr)}' if thr and str(thr) != str(d['threads']) else ''}</div></td>"
+                 f"<td class='mut'>{tsfmt(d['created'])}</td>"
+                 f"<td><form method='post' action='/geraete/freigeben' class='inline' style='padding:8px'>"
+                 f"<input type='hidden' name='id' value='{d['id']}'>"
+                 f"<label>Mehrverbrauch W<input name='watts' value='{esc('' if w is None else de(w, 1))}' required "
+                 f"style='min-width:80px;width:90px'></label>"
+                 f"<label>Messung / Notiz<input name='note' value='{esc(note)}' required style='min-width:260px'></label>"
+                 f"<button>Freigeben</button></form>"
+                 f"<form method='post' action='/geraete/ablehnen' style='margin-top:6px'>"
+                 f"<input type='hidden' name='id' value='{d['id']}'><button class='sec'>Ablehnen</button></form></td></tr>")
+
+    act = ""
+    for m in CFG.miners:
+        act += (f"<tr><td><b>{esc(m.name)}</b><div class='mut mono'>{esc(m.url)}</div></td><td>config.toml</td>"
+                f"<td class='n'>{de(m.watts, 1)} W</td><td class='mut'>{esc(m.note)}</td>"
+                f"<td class='mut'>in config.toml ändern</td></tr>")
+    for d in [x for x in listing if x["status"] == "active"]:
+        cur = d["watts"][-1] if d["watts"] else None
+        hist = "".join(f"<div>{tsfmt(w['valid_from'])}: {de(w['watts'], 1)} W – {esc(w['note'])}</div>"
+                       for w in d["watts"])
+        act += (f"<tr><td><b>{esc(d['name'])}</b><div class='mut mono'>{esc(d['url'])}</div>"
+                f"<div class='mut'>Threads {esc(d['threads'])} · zuletzt gemeldet {tsfmt(d['last_seen'])}</div></td>"
+                f"<td>gekoppelt<div class='mut'>{_profile_text(d['profile'])}</div></td>"
+                f"<td class='n'>{de(cur['watts'], 1) if cur else '–'} W</td><td class='mut'>{hist}</td>"
+                f"<td><form method='post' action='/geraete/watt' class='inline' style='padding:8px'>"
+                f"<input type='hidden' name='id' value='{d['id']}'>"
+                f"<label>Neuer Wert W<input name='watts' required style='min-width:80px;width:90px'></label>"
+                f"<label>Messung / Notiz<input name='note' required style='min-width:200px'></label>"
+                f"<button class='sec'>ab jetzt</button></form>"
+                f"<form method='post' action='/geraete/stilllegen' style='margin-top:6px' "
+                f"onsubmit=\"return confirm('Gerät stilllegen? Es wird nicht mehr abgefragt; die Historie bleibt.')\">"
+                f"<input type='hidden' name='id' value='{d['id']}'><button class='sec'>Stilllegen</button></form></td></tr>")
+
+    old = "".join(f"<tr><td>{esc(d['name'])}</td><td class='mut'>stillgelegt {tsfmt(d['retired'])}</td>"
+                  f"<td class='mut'>{' · '.join(f'{de(w['watts'], 1)} W ab {tsfmt(w['valid_from'])}' for w in d['watts'])}"
+                  f"</td></tr>" for d in listing if d["status"] == "retired")
+
+    stratum = f"{CFG.stratum_host}:{CFG.stratum_port}" if CFG.stratum_host else f"NAS, Port {CFG.stratum_port}"
+    body = (f"<h1>Geräte</h1>{f'<p class=note>{esc(msg)}</p>' if msg else ''}"
+            f"<p class='mut'>Neue Rechner richtest du mit <span class='mono'>deploy/mac/install.sh</span> ein: Der "
+            f"Installer findet diesen Ledger im Heimnetz, übernimmt die Pool-Adresse ({esc(stratum)}) und koppelt "
+            f"den Rechner mit einem Code. Erfasst wird er erst nach der Freigabe – mit dem gemessenen "
+            f"Mehrverbrauch, der ab dann für jede Abfrage festgeschrieben wird.</p>"
+            f"<h2>Neuen Rechner koppeln</h2>{code_html}"
+            f"<h2>Wartet auf Freigabe</h2><table><tr><th>Rechner</th><th>Gerät</th><th>gemeldet</th>"
+            f"<th>Freigabe</th></tr>{pend or '<tr><td colspan=4 class=mut>keine</td></tr>'}</table>"
+            f"<h2>Aktive Rechner</h2><table><tr><th>Rechner</th><th>Quelle</th><th class='n'>Mehrverbrauch</th>"
+            f"<th>Messung / Historie</th><th></th></tr>{act or '<tr><td colspan=5 class=mut>keine</td></tr>'}</table>"
+            f"<p class='mut'>Ein neuer Wert gilt ab dem Speichern; bereits erfasste Zeiten behalten ihren Wert.</p>"
+            f"{f'<h2>Stillgelegt</h2><table>{old}</table>' if old else ''}")
+    return page("/geraete", "Geräte", body)
+
+
 # ---------- HTTP ----------
 class Handler(BaseHTTPRequestHandler):
     server_version = "xmr-ledger"
@@ -700,6 +807,9 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/health":  # ohne Passwort, für den Docker-Healthcheck
             self._send(b"ok", "text/plain; charset=utf-8")
             return
+        if u.path == "/api/moneta":  # ohne Passwort: damit neue Rechner den Ledger im Heimnetz finden
+            self._json(discovery())
+            return
         if not self._auth():
             return
         q = urllib.parse.parse_qs(u.query)
@@ -735,6 +845,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(p_disposals(q).encode())
             elif u.path == "/rechner":
                 self._send(p_calc(q).encode())
+            elif u.path == "/geraete":
+                self._send(p_devices(q).encode())
             elif u.path == "/bericht.xlsx":
                 self._send(report.build_xlsx(CFG, year),
                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -748,15 +860,49 @@ class Handler(BaseHTTPRequestHandler):
             log.exception("Fehler bei %s", self.path)
             self._send(f"Fehler: {e}".encode(), "text/plain; charset=utf-8", 500)
 
+    def _json(self, obj: dict, status: int = 200):
+        self._send(json.dumps(obj, ensure_ascii=False).encode(), "application/json; charset=utf-8", status)
+
+    def _api_post(self, path: str) -> None:
+        """Endpunkte für Rechner (ohne Dashboard-Passwort): Kopplung per Code, Heartbeat per Geräte-Token.
+        Kein Browser-Formular – statt der Same-Origin-Prüfung gilt: nur JSON, Größenlimit, Code bzw. Token."""
+        try:
+            ctype = self.headers.get("Content-Type", "").split(";")[0].strip().lower()
+            if ctype != "application/json":
+                raise devices.PairError(415, "Content-Type application/json erwartet")
+            n = int(self.headers.get("Content-Length", 0) or 0)
+            if not 0 < n <= devices.MAX_BODY:
+                raise devices.PairError(413, "Anfrage leer oder zu groß")
+            try:
+                body = json.loads(self.rfile.read(n))
+            except ValueError:
+                raise devices.PairError(400, "Ungültiges JSON") from None
+            if path == "/api/pair":
+                res = devices.pair(CFG, body)
+                log.info("Neuer Rechner gekoppelt, wartet auf Freigabe: %s", res["name"])
+                self._json({**res, **discovery()}, 201)
+            else:
+                auth = self.headers.get("Authorization", "")
+                token = auth[7:].strip() if auth.startswith("Bearer ") else ""
+                self._json({**devices.heartbeat(CFG, token, body), **discovery()})
+        except devices.PairError as e:
+            self._json({"error": str(e)}, e.status)
+
     def do_POST(self):  # noqa: N802
+        u = urllib.parse.urlparse(self.path)
+        if u.path in ("/api/pair", "/api/heartbeat"):
+            self._api_post(u.path)
+            return
         if not self._auth():
             return
         if not self._same_origin():
             self._send("Abgelehnt: Anfrage kam nicht vom Dashboard".encode(), "text/plain; charset=utf-8", 403)
             return
-        u = urllib.parse.urlparse(self.path)
         n = int(self.headers.get("Content-Length", 0))
         form = {k: v[0] for k, v in urllib.parse.parse_qs(self.rfile.read(n).decode()).items()}
+        if u.path.startswith("/geraete/"):
+            self._devices_post(u.path, form)
+            return
         try:
             if u.path == "/abgaenge":
                 d = date.fromisoformat(form["datum"])
@@ -791,6 +937,37 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(b"Nicht gefunden", "text/plain; charset=utf-8", 404)
         except (KeyError, ValueError, InvalidOperation) as e:
             self._send(p_disposals({}, msg=f"Nicht gespeichert: {e}").encode(), status=400)
+
+
+    def _devices_post(self, path: str, form: dict) -> None:
+        try:
+            if path == "/geraete/code":
+                if form.get("aktion") == "abbrechen":
+                    devices.cancel_code()
+                elif CFG.pairing:
+                    devices.new_code()
+                    log.info("Kopplungscode erzeugt (10 Minuten gültig)")
+            elif path == "/geraete/freigeben":
+                devices.approve(int(form["id"]), form.get("watts", ""), form.get("note", ""))
+            elif path == "/geraete/ablehnen":
+                devices.reject(int(form["id"]))
+            elif path == "/geraete/watt":
+                devices.set_watts(int(form["id"]), form.get("watts", ""), form.get("note", ""))
+            elif path == "/geraete/stilllegen":
+                devices.retire(int(form["id"]))
+            else:
+                self._send(b"Nicht gefunden", "text/plain; charset=utf-8", 404)
+                return
+            self._redirect("/geraete")
+        except (KeyError, ValueError) as e:
+            self._send(p_devices({}, msg=f"Nicht gespeichert: {e}").encode(), status=400)
+
+
+def discovery() -> dict:
+    """Antwort auf GET /api/moneta: nur, was ein neuer Rechner zum Verbinden braucht – nichts Sensibles."""
+    return {"service": "moneta-ledger", "api": 1, "version": version.VERSION,
+            "stratum": {"host": CFG.stratum_host or None, "port": CFG.stratum_port},
+            "pairing": CFG.pairing}
 
 
 def serve(cfg: Config, stop) -> ThreadingHTTPServer:

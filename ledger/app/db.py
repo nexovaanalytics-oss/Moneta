@@ -103,6 +103,32 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX IF NOT EXISTS idx_network_ts ON network_samples(ts);
     """,
+    # 4: im Dashboard gekoppelte Rechner. Watt als Historie mit valid_from (nie überschreiben);
+    #    stillgelegte Geräte bleiben stehen, damit Name und Historie nachvollziehbar sind
+    """
+    CREATE TABLE IF NOT EXISTS devices (
+        id        INTEGER PRIMARY KEY AUTOINCREMENT,
+        name      TEXT NOT NULL,
+        url       TEXT NOT NULL,             -- XMRig-API, z. B. http://192.168.1.20:18000
+        token     TEXT NOT NULL,             -- --http-access-token des Rechners
+        status    TEXT NOT NULL,             -- 'pending' | 'active' | 'retired'
+        profile   TEXT,                      -- JSON vom Rechner: Modell, Kerne, Messvorschlag
+        threads   TEXT,                      -- gemeldete Thread-Einstellung ("all" oder Zahl)
+        created   INTEGER NOT NULL,
+        approved  INTEGER,
+        retired   INTEGER,
+        last_seen INTEGER                    -- letzte Meldung des Rechners (Kopplung/Heartbeat)
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_name ON devices(name) WHERE status != 'retired';
+    CREATE TABLE IF NOT EXISTS device_watts (
+        device_id  INTEGER NOT NULL REFERENCES devices(id),
+        valid_from INTEGER NOT NULL,          -- Unix-Zeit, ab der der Wert gilt (nie rückwirkend)
+        watts      REAL NOT NULL,
+        note       TEXT NOT NULL,
+        created    INTEGER NOT NULL,
+        PRIMARY KEY (device_id, valid_from)
+    );
+    """,
 ]
 
 _local = threading.local()

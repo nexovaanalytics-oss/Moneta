@@ -23,7 +23,7 @@
 | 3333/tcp | P2Pool Stratum | LAN (mineros) |
 | 37888/tcp | P2Pool P2P (mini) | Internet saliente |
 | 18082/tcp | wallet-rpc | solo interno de Docker, sin puerto publicado |
-| 8090/tcp | Panel del ledger | LAN, Basic Auth |
+| 8090/tcp | Panel del ledger | LAN, Basic Auth; `/api/moneta`, `/api/pair`, `/api/heartbeat` sin contraseña (solo código de emparejamiento o token del equipo) |
 | 18000/tcp | API de XMRig en los equipos | LAN, token Bearer, solo lectura |
 
 **Nunca** expongas Stratum, el RPC ni el panel a Internet mediante redirección de puertos. Si el cortafuegos del
@@ -37,6 +37,8 @@ API de XMRig (equipos) ───▶ miners.py ──▶ power_daily / power_samp
                                          (tiempo de minería × vatios × tarifa, fijados al registrar)
                                          + activity_hourly (valores por hora, solo análisis)
 monerod (nodo propio, cada hora) ──▶ network.py ──▶ network_samples (dificultad, recompensa de bloque)
+
+Equipos (emparejamiento) ──▶ /api/pair, /api/heartbeat ──▶ devices, device_watts (aprobación y vatios en el panel)
 
 wallet-rpc ──────────────▶ walletsync.py ──▶ inflows  (coinbase = entrada de minería, si no "otra entrada")
                                                 │

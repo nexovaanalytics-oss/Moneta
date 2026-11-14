@@ -11,7 +11,7 @@ installateur (`deploy/mac/install.sh`) configure XMRig comme agent launchd et co
 menus à partir du code source sur l'ordinateur lui-même (`swiftc` des Command Line Tools, dont Homebrew a de toute
 façon besoin). Les programmes compilés localement ne portent pas d'attribut de quarantaine ; Gatekeeper ne pose donc
 pas de question, et ni compte développeur Apple payant ni notarisation ne sont nécessaires. XMRig n'est pas fourni
-mais installé via Homebrew (DONATE 0 %, mises à jour propres) ; l'application ne fait que piloter l'agent et lire
+mais installé via Homebrew (mises à jour propres) ; l'application ne fait que piloter l'agent et lire
 l'API locale de XMRig. L'entrée `[[miner]]` dans `config.toml` reste volontairement une étape manuelle : les watts
 sont figés à chaque relevé et doivent être mesurés au préalable. Une application signée et notarisée à télécharger
 reste une option pour plus tard.

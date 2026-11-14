@@ -11,7 +11,7 @@ Rechner sollen sich ohne Terminal-Kenntnisse einrichten und per Knopf starten la
 dem Rechner selbst (`swiftc` aus den Command Line Tools, die Homebrew ohnehin braucht). Lokal gebaute Programme
 tragen kein Quarantäne-Attribut; Gatekeeper fragt deshalb nicht nach, und es braucht weder ein kostenpflichtiges
 Apple-Entwicklerkonto noch eine Notarisierung. XMRig wird nicht mitgeliefert, sondern über Homebrew installiert
-(DONATE 0 %, eigene Updates); die App steuert nur den Agent und liest die lokale XMRig-API. Der `[[miner]]`-Eintrag
+(eigene Updates); die App steuert nur den Agent und liest die lokale XMRig-API. Der `[[miner]]`-Eintrag
 in der `config.toml` bleibt bewusst ein manueller Schritt: Die Watt werden je Erfassung festgeschrieben und müssen
 vorher gemessen sein. Eine signierte, notarisierte App zum Herunterladen bleibt eine Option für später.
 

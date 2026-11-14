@@ -10,7 +10,7 @@ Computers should be set up without terminal knowledge and started with a button.
 (`deploy/mac/install.sh`) sets up XMRig as a launchd agent and builds the menu bar app from source on the computer
 itself (`swiftc` from the Command Line Tools, which Homebrew needs anyway). Locally built programs carry no
 quarantine attribute, so Gatekeeper does not prompt, and neither a paid Apple developer account nor notarization is
-needed. XMRig is not bundled but installed via Homebrew (DONATE 0 %, its own updates); the app only controls the
+needed. XMRig is not bundled but installed via Homebrew (its own updates); the app only controls the
 agent and reads the local XMRig API. The `[[miner]]` entry in `config.toml` deliberately stays a manual step:
 watts are frozen with every sample and must be measured first. A signed, notarized app to download remains an
 option for later.

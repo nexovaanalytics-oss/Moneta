@@ -28,6 +28,21 @@ Contributors: add user-facing changes under "Unreleased".
 - `xmrig-start.sh`: reads the thread count from `~/.config/moneta/threads`, finds Homebrew's `xmrig` without
   `PATH` (launchd), disables colours when logging, and no longer requires `caffeinate` (Linux).
 - Docs: quick setup in `setup-mac.md`, design decision D-09 (all four languages).
+- Installer finds the XMR ledger in the home network (`GET /api/moneta` on port 8090 across the local /24) and
+  takes the pool address from it; `LEDGER=http://<NAS-IP>:8090` skips the search.
+- Pairing: the installer asks for the pairing code from the dashboard (**Geräte**) and registers the Mac with
+  name, address, token, device profile and – if measured – threads and extra power draw. The ledger records it
+  after approval. Without a ledger or code it prints the `[[miner]]` block as before. Requires ledger ≥ 1.3.0.
+- `moneta-miner.sh heartbeat` reports IP and threads to the ledger; runs automatically after `start`/`restart`,
+  so a changed IP is picked up. `status` shows the ledger and pairing state (`ledger=`, `paired=` in `--plain`).
+- New `deploy/mac/profil.sh`: device profile (model, chip, performance/efficiency cores, fanless) and thread
+  suggestion from `deploy/mac/profile.tsv` (measured devices) or the rule of thumb – fanless: performance cores
+  − 1, with a fan: all cores.
+- New `deploy/mac/einmessen.sh`: measures idle and load power (`powermetrics`) and hashrate for two thread
+  counts, suggests the best hashrate per watt and writes threads, extra watts and a ready-made note to
+  `~/.config/moneta/einmessung.json` (used by installer and pairing).
+- Fix: the docs and installer claimed the Homebrew build donates 0 %; like all official XMRig builds it donates at
+  least 1 % (`--donate-level 0` is ignored). Corrected in `setup-mac.md` and D-09.
 
 ## project – 2026-11-13: first public release
 

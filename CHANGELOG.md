@@ -5,6 +5,12 @@ Contributors: add user-facing changes under "Unreleased".
 
 ## Unreleased
 
+**deploy/nas**
+- New `deploy/nas/update-ledger.sh`: deploys a ledger release on the NAS in one step – asks GitHub for the latest
+  `ledger-vX.Y.Z` (or takes a given version), asks for confirmation, pulls the image first, backs up the database
+  inside the running container (SQLite backup incl. WAL), sets `LEDGER_VERSION` in `.env`, restarts `wallet-rpc`
+  and `ledger` and prints the log and rollback steps. `--check` only compares versions. The version stays pinned.
+
 **deploy/mac**
 - New installer `deploy/mac/install.sh`: installs Homebrew and XMRig if needed, asks for pool address and threads,
   creates or takes over the API token, sets up XMRig as launchd agent `moneta.xmrig` (log, restart after a crash,

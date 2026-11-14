@@ -5,6 +5,17 @@
 Warum Moneta so gebaut ist. Neue Einträge oben anfügen (Datum, Kontext, Entscheidung, Folgen).
 Diese deutsche Fassung ist die Referenz; Übersetzungen bitte mitziehen.
 
+### D-10 · 14.11.2026 – Neue Rechner per Code koppeln, Freigabe im Dashboard
+Neue Rechner sollen ohne Handarbeit in der `config.toml` dazukommen. Der Ledger ist dafür die Leitstelle: Er
+antwortet ohne Passwort auf `GET /api/moneta` (nur Dienst, Version, Stratum-Adresse), damit Installer und App ihn
+im Heimnetz finden; Bonjour/mDNS scheidet aus, weil der Container im Bridge-Netz kein Multicast kann. Gekoppelt
+wird mit einem 6-stelligen Code aus dem Dashboard (10 Minuten, einmalig, ungültig nach fünf Fehlversuchen) über
+`POST /api/pair`. Weil das kein Browser-Formular ist, ersetzen dort Code, reines JSON und ein Größenlimit die
+Same-Origin-Prüfung; `/api/heartbeat` prüft das Geräte-Token. Ein gekoppelter Rechner wird erst nach der Freigabe
+mit gemessenem Mehrverbrauch abgefragt – sonst könnte jedes Gerät im LAN Stromkosten in die steuerlich relevanten
+Daten schreiben. Watt liegen als Historie mit `valid_from` in der Datenbank und werden nie überschrieben; `[[miner]]`
+in der `config.toml` bleibt möglich.
+
 ### D-09 · 13.11.2026 – Miner-Start per Menüleisten-App, lokal gebaut statt signiert verteilt
 Rechner sollen sich ohne Terminal-Kenntnisse einrichten und per Knopf starten lassen. Ein Installer
 (`deploy/mac/install.sh`) richtet XMRig als launchd-Agent ein und baut die Menüleisten-App aus dem Quellcode auf

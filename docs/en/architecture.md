@@ -23,7 +23,7 @@
 | 3333/tcp | P2Pool Stratum | LAN (miners) |
 | 37888/tcp | P2Pool P2P (mini) | Internet outbound |
 | 18082/tcp | wallet-rpc | Docker-internal only, no published port |
-| 8090/tcp | Ledger dashboard | LAN, Basic Auth |
+| 8090/tcp | Ledger dashboard | LAN, Basic Auth; `/api/moneta`, `/api/pair`, `/api/heartbeat` without password (pairing code or device token only) |
 | 18000/tcp | XMRig API on the computers | LAN, bearer token, read-only |
 
 **Never** expose Stratum, RPC or the dashboard to the internet via port forwarding. If the NAS firewall is
@@ -37,6 +37,8 @@ XMRig API (computers) ────▶ miners.py ──▶ power_daily / power_sa
                                          (mining time × watts × tariff, frozen at record time)
                                          + activity_hourly (hourly values, analysis only)
 monerod (own node, hourly) ──▶ network.py ──▶ network_samples (difficulty, block reward)
+
+Computers (pairing) ──▶ /api/pair, /api/heartbeat ──▶ devices, device_watts (approval and watts in the dashboard)
 
 wallet-rpc ──────────────▶ walletsync.py ──▶ inflows  (coinbase = mining inflow, otherwise "other receipt")
                                                 │

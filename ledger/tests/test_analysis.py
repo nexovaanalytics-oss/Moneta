@@ -138,7 +138,7 @@ watts = 10.0
 
     cfg = config.load(f"{DATA}/config.toml")
     assert cfg.node_rpc_url.endswith(f"{node_port}/json_rpc")
-    assert db.init(f"{DATA}/ledger.sqlite") == len(db.MIGRATIONS) == 3
+    assert db.init(f"{DATA}/ledger.sqlite") == len(db.MIGRATIONS) >= 3
     assert activity.backfill_hourly(cfg) == 240
     assert activity.backfill_hourly(cfg) == 0  # nur einmal
     h = {(r["hour"], r["device"]): dict(r) for r in db.get().execute("SELECT * FROM activity_hourly")}

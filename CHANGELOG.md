@@ -6,6 +6,16 @@ Contributors: add user-facing changes under "Unreleased".
 ## Unreleased
 
 **ledger**
+- Pair new computers from the dashboard (new page "Geräte"): generate a 6-digit code (10 min, single use, invalid
+  after five failed attempts); the computer registers via `POST /api/pair` and is only polled after approval with a
+  measured extra power draw and note. Watts per paired computer are kept as a history (`valid_from`, never
+  overwritten; new value applies from now on); computers can be retired. `[[miner]]` in `config.toml` still works.
+- `GET /api/moneta` (no password, no sensitive data): lets installers find the ledger in the LAN and returns the
+  stratum address (`[pool] stratum_host`, `stratum_port`; `pairing` switches pairing off).
+- `POST /api/heartbeat` (device token): paired computers report a changed IP and their thread setting.
+- The device list (overview, `/api/live`, polling) is now read live from `config.toml` plus the database – no
+  restart after pairing. The Excel sheet "Geräte" shows the watt history with "gültig ab" and the source.
+- DB schema v4 (additive: `devices`, `device_watts`).
 - Dashboard overview updates live: every 30 s via the new read-only endpoint `GET /api/live` (JSON, same Basic
   Auth) without reloading the page; paused while the tab is hidden; status shows the age of the last fetch or
   "connection lost". The full-page reload every 2 minutes remains as a fallback without JavaScript.

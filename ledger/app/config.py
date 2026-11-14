@@ -15,6 +15,8 @@ class Miner:
     token: str = ""
     watts: float = 0.0
     note: str = ""
+    source: str = "config"        # "config" = [[miner]] in config.toml, "device" = im Dashboard gekoppelt
+    device_id: int | None = None
 
 
 @dataclass
@@ -43,6 +45,10 @@ class Config:
     coingecko_api_key: str = ""
     # Eigener Node (eingeschränkter RPC) für Difficulty/Blockbelohnung; leer = aus
     node_rpc_url: str = "http://monerod:18089/json_rpc"
+    # P2Pool-Stratum für neue Rechner (GET /api/moneta); leerer Host = dieselbe Adresse wie der Ledger
+    stratum_host: str = ""
+    stratum_port: int = 3333
+    pairing: bool = True          # Kopplung neuer Rechner über einen Code aus dem Dashboard
     # Strom
     poll_seconds: int = 60
     nas_extra_watts: float = 0.0
@@ -79,6 +85,7 @@ def load(path: str) -> Config:
     pw = raw.get("power", {})
     gen = raw.get("general", {})
     node = raw.get("node", {})
+    pool = raw.get("pool", {})
 
     for key in ("address", "view_key", "restore_height", "wallet_password"):
         if key not in w or w[key] in ("", None):
@@ -118,6 +125,9 @@ def load(path: str) -> Config:
         web_password=str(web["password"]),
         coingecko_api_key=str(pr.get("coingecko_api_key", "")),
         node_rpc_url=str(node.get("rpc_url", "http://monerod:18089/json_rpc")),
+        stratum_host=str(pool.get("stratum_host", "")),
+        stratum_port=int(pool.get("stratum_port", 3333)),
+        pairing=bool(pool.get("pairing", True)),
         poll_seconds=int(pw.get("poll_seconds", 60)),
         nas_extra_watts=float(pw.get("nas_extra_watts", 0.0)),
         nas_note=str(pw.get("nas_note", "")),

@@ -21,8 +21,9 @@ comentarios en alemán). Contiene la **clave de visualización**: no la comparta
 | `[web]` | `port`, `user`, `password` (obligatorio) |
 | `[prices]` | `coingecko_api_key` (opcional; una clave demo gratuita eleva el límite de consultas) |
 | `[node]` | `rpc_url` de tu propio nodo para dificultad y recompensa de bloque (por defecto `http://monerod:18089/json_rpc`, vacío = desactivado) |
+| `[pool]` | para equipos nuevos: `stratum_host` (vacío = IP del NAS), `stratum_port` (por defecto 3333); `pairing` (por defecto `true`) permite el emparejamiento con código |
 | `[power]` | `poll_seconds`, `nas_extra_watts` (0 = no contabilizar el NAS), `[[power.tariff]]` con `valid_from`, `ct_per_kwh` |
-| `[[miner]]` | por equipo: `name`, `url` (`http://IP:18000`), `token`, `watts` (consumo adicional), `note` (medición) |
+| `[[miner]]` | opcional, en lugar del emparejamiento en el panel, por equipo: `name`, `url` (`http://IP:18000`), `token`, `watts` (consumo adicional), `note` (medición) |
 
 Comprobar antes de copiar:
 
@@ -45,14 +46,41 @@ Tras cambios: `sudo docker restart xmr-ledger`.
 | **Lose** (lotes) | Lotes FIFO con coste de adquisición y fecha **steuerfrei ab** (exento desde) |
 | **Abgänge** (salidas) | Registrar/borrar transferencias desde la billetera de minería |
 | **Verkaufs-Rechner** (calculadora de venta) | Simular una venta/permuta prevista (no se guarda nada) |
+| **Geräte** (equipos) | Emparejar equipos nuevos con un código y aprobarlos, cambiar el consumo adicional «a partir de ahora» (historial), retirar |
 
 `/health` responde `ok` sin contraseña (healthcheck de Docker).
+
+`/api/moneta` también responde sin contraseña, pero solo con el nombre del servicio, la versión, la dirección
+stratum y si el emparejamiento es posible: así encuentran los equipos nuevos el ledger en la red doméstica.
+`/api/pair` (código de emparejamiento) y `/api/heartbeat` (token del equipo) solo aceptan JSON de los equipos,
+consulta [Emparejar equipos](#emparejar-equipos).
 
 **Actualización:** mientras la pestaña está abierta, el resumen obtiene valores nuevos cada 30 s sin recargar la
 página (`/api/live`, JSON, mismo inicio de sesión; en pausa en una pestaña en segundo plano). Junto al año indica
 la antigüedad de la última consulta, o «Verbindung verloren» (conexión perdida). Sin JavaScript, el resumen se
 recarga cada 2 minutos. Los datos los recoge el propio ledger en segundo plano: equipos cada `poll_seconds`
 (60 s por defecto), billetera cada 120 s, historial de cotizaciones cada 10 minutos.
+
+## Emparejar equipos
+
+Los equipos nuevos pueden añadirse sin una entrada en `config.toml`:
+
+1. Panel → **Geräte** → «Neuen Rechner koppeln – Code erzeugen». El código de 6 cifras es válido 10 minutos y una
+   sola vez; tras cinco intentos fallidos deja de ser válido.
+2. El equipo se registra con el código mediante `POST /api/pair`: nombre, URL de XMRig (solo direcciones de la red
+   doméstica), token de la API, perfil del equipo (modelo, núcleos) y, si se ha medido, una propuesta de hilos y
+   de consumo adicional. El instalador y la app de la barra de menús lo harán con la próxima actualización de
+   `deploy/mac`.
+3. El equipo aparece en **Wartet auf Freigabe** (pendiente de aprobación). Comprueba o introduce el consumo
+   adicional y la nota de medición y pulsa **Freigeben** (aprobar). Solo a partir de entonces se consulta; el valor
+   se fija en cada registro, igual que con `[[miner]]`.
+4. Si cambia el consumo adicional (p. ej. otro número de hilos), guarda un valor nuevo en **Aktive Rechner**: se
+   aplica desde que se guarda; los registros anteriores no cambian. El informe de Excel (hoja «Geräte») muestra el
+   historial con «gültig ab» (válido desde). **Stilllegen** (retirar) detiene las consultas; el historial y el
+   nombre siguen visibles.
+
+Los equipos emparejados se notifican con su token mediante `POST /api/heartbeat`; una IP cambiada se adopta.
+Los equipos de `[[miner]]` siguen funcionando igual (los cambios ahí siguen requiriendo reiniciar el contenedor).
 
 ## Uso
 
@@ -76,6 +104,7 @@ recarga cada 2 minutos. Los datos los recoge el propio ledger en segundo plano: 
 | `walletsync.py` | wallet-rpc: crear/abrir la billetera, leer entradas, limpiar tras reorganizaciones |
 | `prices.py` | Historial de cotizaciones de 5 minutos, asignación de cotizaciones, respaldo con cotización diaria, cotizaciones manuales |
 | `miners.py` | Consultar la API de XMRig, registrar tiempo de minería y costes |
+| `devices.py` | Equipos emparejados: código de emparejamiento, registro, aprobación, historial de vatios, heartbeat |
 | `activity.py` | Valores por hora por equipo, análisis por periodos |
 | `network.py` | Dificultad y recompensa de bloque desde tu propio nodo |
 | `ledger.py` | Lotes, FIFO, plazos, resumen anual, calculadora de venta |
@@ -99,3 +128,5 @@ Pruebas: `python -m pytest -q ledger/tests` (billetera, XMRig y cotizaciones sim
   [hoja de ruta](../../ROADMAP.md)).
 - La lógica fiscal aplica las normas **alemanas** (ver [Metodología fiscal](tax-methodology.md)); los perfiles
   para otros países están en la hoja de ruta.
+- Emparejamiento: el token y los datos del equipo viajan sin cifrar por la LAN, igual que la contraseña del
+  panel. Sin un código válido ningún equipo puede registrarse, y sin aprobación ninguno se registra.

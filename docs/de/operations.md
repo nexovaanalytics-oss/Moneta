@@ -40,6 +40,32 @@ mit `read:packages`.
 
 ## Neue Ledger-Version auf der NAS einspielen
 
+**Mit dem Update-Skript** (empfohlen): Es fragt GitHub nach der neuesten Version `ledger-vX.Y.Z`, zeigt die
+Änderung und fragt nach. Dann zieht es das Image (vorher wird nichts geändert), sichert die Datenbank im laufenden
+Container (`ledger/data/ledger-vor-X.Y.Z-<Zeit>.sqlite`, SQLite-Backup inkl. WAL), setzt `LEDGER_VERSION` in `.env`,
+startet `wallet-rpc` und `ledger` neu, zeigt das Log und den Weg zurück. Die Version bleibt fest eingetragen – das
+Skript läuft nur, wenn du es startest. Einmalig herunterladen (vorher lesen):
+
+```bash
+cd /volume1/docker/monero
+sudo curl -fsSLo update-ledger.sh https://raw.githubusercontent.com/nexovaanalytics-oss/Moneta/main/deploy/nas/update-ledger.sh
+cat update-ledger.sh
+```
+
+Danach je Update:
+
+```bash
+cd /volume1/docker/monero
+sudo bash update-ledger.sh --check     # nur anzeigen: eingetragen vs. neueste Version
+sudo bash update-ledger.sh             # neueste Version, mit Rückfrage
+sudo bash update-ledger.sh 1.2.0       # bestimmte Version
+```
+
+Die einzige externe Anfrage geht an `api.github.com` (Liste der Releases) – zu einem Zeitpunkt, den du wählst, ohne
+Bezug zu Auszahlungen.
+
+**Von Hand:**
+
 ```bash
 cd /volume1/docker/monero
 sudo sed -i 's/^LEDGER_VERSION=.*/LEDGER_VERSION=1.2.0/' .env

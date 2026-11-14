@@ -29,8 +29,8 @@ def main() -> None:
     cfg = config.load(args.config)
     os.makedirs(cfg.data_dir, exist_ok=True)
     schema = db.init(os.path.join(cfg.data_dir, "ledger.sqlite"))
-    logging.info("%s gestartet (DB-Schema v%d, %d Rechner)", version.label(), schema, len(cfg.miners))
-    for m in cfg.miners:
+    logging.info("%s gestartet (DB-Schema v%d, %d Rechner)", version.label(), schema, len(miners.current(cfg)))
+    for m in miners.current(cfg):
         if m.watts <= 0:
             logging.warning("%s: watts = 0 – für dieses Gerät werden keine Stromkosten erfasst", m.name)
 

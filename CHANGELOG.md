@@ -19,11 +19,34 @@ Contributors: add user-facing changes under "Unreleased".
 - New menu bar app **Moneta Miner** (macOS 13+, SwiftUI, no dependencies): start/stop, threads, autostart,
   hashrate, paused state and pool connection from the local XMRig API. Built locally by the installer with
   `swiftc`, so no Gatekeeper prompt and no Apple developer account.
+- Menu bar app 1.1 – a live cockpit for this Mac: hashrate next to the menu bar icon (can be switched off), a
+  window with the hashrate history of the last 15 min / 1 h / 6 h (Swift Charts, kept in memory only), a state
+  timeline (mining/paused/stopped), average and paused time for the window, hashrate per thread, pool latency,
+  accepted/rejected stratum shares, power source and thermal state. When XMRig pauses, the app shows why: battery
+  mode with battery level, a detected power adapter and running charge limiters such as AlDente (XMRig runs with
+  `--pause-on-battery`), plus hints for Low Power Mode and thermal throttling. A "Dashboard" button opens the
+  ledger dashboard (pool host, port 8090, or the URL in `~/.config/moneta/dashboard`). Update: `git pull`, then
+  run `deploy/mac/install.sh` again.
+- CI: new workflow `mac-app` compiles the menu bar app on a macOS runner (Xcode and Command Line Tools only)
+  whenever `deploy/mac/MonetaMiner/` changes.
 - New `deploy/mac/moneta-miner.sh` to control the agent from the terminal (`start`, `stop`, `status`, `threads`,
   `autostart`, `log`).
 - `xmrig-start.sh`: reads the thread count from `~/.config/moneta/threads`, finds Homebrew's `xmrig` without
   `PATH` (launchd), disables colours when logging, and no longer requires `caffeinate` (Linux).
 - Docs: quick setup in `setup-mac.md`, design decision D-09 (all four languages).
+
+## ledger 1.3.0 – 2026-11-14
+
+- Pair new computers from the dashboard (new page "Geräte"): generate a 6-digit code (10 min, single use, invalid
+  after five failed attempts); the computer registers via `POST /api/pair` and is only polled after approval with a
+  measured extra power draw and note. Watts per paired computer are kept as a history (`valid_from`, never
+  overwritten; new value applies from now on); computers can be retired. `[[miner]]` in `config.toml` still works.
+- `GET /api/moneta` (no password, no sensitive data): lets installers find the ledger in the LAN and returns the
+  stratum address (`[pool] stratum_host`, `stratum_port`; `pairing` switches pairing off).
+- `POST /api/heartbeat` (device token): paired computers report a changed IP and their thread setting.
+- The device list (overview, `/api/live`, polling) is now read live from `config.toml` plus the database – no
+  restart after pairing. The Excel sheet "Geräte" shows the watt history with "gültig ab" and the source.
+- DB schema v4 (additive: `devices`, `device_watts`).
 
 ## ledger 1.2.0 – 2026-11-14
 

@@ -5,6 +5,17 @@
 Por qué Moneta está construido así. Añadir las nuevas entradas arriba (fecha, contexto, decisión,
 consecuencias). La [versión alemana](../de/design-decisions.md) es la de referencia.
 
+### D-10 · 14/11/2026 – Emparejar equipos nuevos con un código, aprobación en el panel
+Los equipos nuevos deben poder añadirse sin editar `config.toml` a mano. El ledger hace de punto central: responde
+sin contraseña a `GET /api/moneta` (solo servicio, versión y dirección stratum) para que el instalador y la app lo
+encuentren en la red doméstica; Bonjour/mDNS queda descartado porque el contenedor no puede hacer multicast desde la
+red bridge. El emparejamiento usa un código de 6 cifras del panel (10 minutos, de un solo uso, inválido tras cinco
+intentos fallidos) mediante `POST /api/pair`. Como no es un formulario del navegador, el código, cuerpos solo JSON
+y un límite de tamaño sustituyen ahí la comprobación same-origin; `/api/heartbeat` comprueba el token del equipo.
+Un equipo emparejado solo se consulta tras aprobarlo con un consumo adicional medido; de lo contrario, cualquier
+dispositivo de la LAN podría escribir costes de electricidad en los datos con relevancia fiscal. Los vatios se
+guardan como historial con `valid_from` y nunca se sobrescriben; `[[miner]]` en `config.toml` sigue siendo posible.
+
 ### D-09 · 13/11/2026 – Inicio del minero desde una app de la barra de menús, compilada localmente en lugar de distribuida firmada
 Los equipos deben poder configurarse sin conocimientos de terminal e iniciarse con un botón. Un instalador
 (`deploy/mac/install.sh`) configura XMRig como agente de launchd y compila la app de la barra de menús desde el

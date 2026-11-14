@@ -5,6 +5,17 @@
 Why Moneta is built the way it is. Add new entries at the top (date, context, decision, consequences).
 The [German version](../de/design-decisions.md) is the reference.
 
+### D-10 · 2026-11-14 – Pairing new computers with a code, approval in the dashboard
+New computers should join without manual edits to `config.toml`. The ledger acts as the control point: it answers
+`GET /api/moneta` without a password (service, version, stratum address only) so the installer and app can find it
+in the home network; Bonjour/mDNS is ruled out because the container cannot multicast from the bridge network.
+Pairing uses a 6-digit code from the dashboard (10 minutes, single use, invalid after five failed attempts) via
+`POST /api/pair`. As this is not a browser form, the code, JSON-only bodies and a size limit replace the
+same-origin check there; `/api/heartbeat` checks the device token. A paired computer is only polled after approval
+with a measured extra power draw – otherwise any device in the LAN could write electricity costs into the
+tax-relevant data. Watts are stored as a history with `valid_from` and never overwritten; `[[miner]]` in
+`config.toml` remains possible.
+
 ### D-09 · 2026-11-13 – Starting the miner from a menu bar app, built locally instead of distributed signed
 Computers should be set up without terminal knowledge and started with a button. An installer
 (`deploy/mac/install.sh`) sets up XMRig as a launchd agent and builds the menu bar app from source on the computer

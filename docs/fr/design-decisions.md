@@ -5,6 +5,18 @@
 Pourquoi Moneta est construit ainsi. Ajouter les nouvelles entrées en haut (date, contexte, décision,
 conséquences). La [version allemande](../de/design-decisions.md) sert de référence.
 
+### D-10 · 14/11/2026 – Appairer de nouveaux ordinateurs par code, validation dans le tableau de bord
+De nouveaux ordinateurs doivent pouvoir s'ajouter sans modification manuelle de `config.toml`. Le ledger sert de
+point central : il répond sans mot de passe à `GET /api/moneta` (service, version, adresse stratum uniquement) afin
+que l'installateur et l'application le trouvent dans le réseau local ; Bonjour/mDNS est écarté, car le conteneur
+ne peut pas faire de multicast depuis le réseau bridge. L'appairage utilise un code à 6 chiffres issu du tableau de
+bord (10 minutes, usage unique, invalide après cinq tentatives erronées) via `POST /api/pair`. Comme il ne s'agit
+pas d'un formulaire de navigateur, le code, un corps uniquement JSON et une limite de taille y remplacent la
+vérification same-origin ; `/api/heartbeat` vérifie le jeton de l'appareil. Un ordinateur appairé n'est interrogé
+qu'après validation avec une surconsommation mesurée – sinon n'importe quel appareil du LAN pourrait inscrire des
+coûts d'électricité dans les données fiscalement pertinentes. Les watts sont stockés sous forme d'historique avec
+`valid_from` et jamais écrasés ; `[[miner]]` dans `config.toml` reste possible.
+
 ### D-09 · 13/11/2026 – Démarrage du mineur via une application de barre des menus, compilée localement plutôt que distribuée signée
 Les ordinateurs doivent pouvoir être configurés sans connaissance du terminal et démarrés d'un clic. Un
 installateur (`deploy/mac/install.sh`) configure XMRig comme agent launchd et compile l'application de barre des

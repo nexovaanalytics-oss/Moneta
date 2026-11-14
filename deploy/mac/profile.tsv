@@ -2,5 +2,5 @@
 # Spalten (Tab-getrennt): Chip (sysctl machdep.cpu.brand_string) · lüfterlos (1/0) · Threads (Zahl oder all) · Quelle
 # Neue Messungen gern per Issue „Device measurement“ – siehe CONTRIBUTING. Fehlt ein Gerät, gilt die Faustregel:
 # lüfterlos = Performance-Kerne − 1, mit Lüfter = alle Kerne. Besser: deploy/mac/einmessen.sh.
-Apple M1	1	3	Referenzmessung 11/2026: 4 Threads drosseln nach ~5 Min. von ~1.730 auf ~1.400 H/s
-Apple M3 Pro	0	all	Referenzmessung 11/2026: 11 Threads ≈ 3.700–3.800 H/s bei ≈ 10 W Mehrverbrauch (≈ 367 H/W)
+Apple M1	1	3	Referenzmessung, siehe docs/de/setup-mac.md: 4 Threads drosseln nach ~5 Min.
+Apple M3 Pro	0	all	Referenzmessung, siehe docs/de/setup-mac.md: kein Drosseln mit allen Kernen

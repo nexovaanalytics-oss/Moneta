@@ -5,7 +5,22 @@ Contributors: add user-facing changes under "Unreleased".
 
 ## Unreleased
 
-**ledger**
+**deploy/mac**
+- New installer `deploy/mac/install.sh`: installs Homebrew and XMRig if needed, asks for pool address and threads,
+  creates or takes over the API token, sets up XMRig as launchd agent `moneta.xmrig` (log, restart after a crash,
+  optional autostart at login), allows `xmrig` in the macOS firewall on request and prints a ready-made
+  `[[miner]]` block for `config.toml`. Safe to run again; `--uninstall` removes it.
+- New menu bar app **Moneta Miner** (macOS 13+, SwiftUI, no dependencies): start/stop, threads, autostart,
+  hashrate, paused state and pool connection from the local XMRig API. Built locally by the installer with
+  `swiftc`, so no Gatekeeper prompt and no Apple developer account.
+- New `deploy/mac/moneta-miner.sh` to control the agent from the terminal (`start`, `stop`, `status`, `threads`,
+  `autostart`, `log`).
+- `xmrig-start.sh`: reads the thread count from `~/.config/moneta/threads`, finds Homebrew's `xmrig` without
+  `PATH` (launchd), disables colours when logging, and no longer requires `caffeinate` (Linux).
+- Docs: quick setup in `setup-mac.md`, design decision D-09 (all four languages).
+
+## ledger 1.2.0 – 2026-11-14
+
 - Dashboard overview updates live: every 30 s via the new read-only endpoint `GET /api/live` (JSON, same Basic
   Auth) without reloading the page; paused while the tab is hidden; status shows the age of the last fetch or
   "connection lost". The full-page reload every 2 minutes remains as a fallback without JavaScript.
@@ -24,20 +39,6 @@ Contributors: add user-facing changes under "Unreleased".
 - The current XMR price card shows the time of the price point ("Stand HH:MM").
 - Price history (last 24 h, 5-minute points) is fetched every 10 min instead of every 30 min. Still a fixed
   interval without reference to payouts; price matching per inflow is unchanged.
-
-**deploy/mac**
-- New installer `deploy/mac/install.sh`: installs Homebrew and XMRig if needed, asks for pool address and threads,
-  creates or takes over the API token, sets up XMRig as launchd agent `moneta.xmrig` (log, restart after a crash,
-  optional autostart at login), allows `xmrig` in the macOS firewall on request and prints a ready-made
-  `[[miner]]` block for `config.toml`. Safe to run again; `--uninstall` removes it.
-- New menu bar app **Moneta Miner** (macOS 13+, SwiftUI, no dependencies): start/stop, threads, autostart,
-  hashrate, paused state and pool connection from the local XMRig API. Built locally by the installer with
-  `swiftc`, so no Gatekeeper prompt and no Apple developer account.
-- New `deploy/mac/moneta-miner.sh` to control the agent from the terminal (`start`, `stop`, `status`, `threads`,
-  `autostart`, `log`).
-- `xmrig-start.sh`: reads the thread count from `~/.config/moneta/threads`, finds Homebrew's `xmrig` without
-  `PATH` (launchd), disables colours when logging, and no longer requires `caffeinate` (Linux).
-- Docs: quick setup in `setup-mac.md`, design decision D-09 (all four languages).
 
 ## project – 2026-11-13: first public release
 

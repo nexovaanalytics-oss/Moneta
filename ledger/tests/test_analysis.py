@@ -111,7 +111,7 @@ ct_per_kwh = 30.0
 [[miner]]
 name = "Pro"
 url = "http://127.0.0.1:9"
-watts = 12.0
+watts = 15.0
 
 [[miner]]
 name = "Air"
@@ -131,7 +131,7 @@ watts = 10.0
     for i in range(120):
         ts = base + 60 + i * 60
         # Pro: 1. Stunde nicht erreichbar, 2. Stunde pausiert; Air: mint mit 1.000 H/s
-        old.execute("INSERT INTO power_samples VALUES(?,?,?,?,?,?,?,?)", (ts, "Pro", int(i >= 60), 0, 0.0, 0, 12.0, 30.0))
+        old.execute("INSERT INTO power_samples VALUES(?,?,?,?,?,?,?,?)", (ts, "Pro", int(i >= 60), 0, 0.0, 0, 15.0, 30.0))
         old.execute("INSERT INTO power_samples VALUES(?,?,?,?,?,?,?,?)", (ts, "Air", 1, 1, 1000.0, 60, 10.0, 30.0))
     old.commit()
     old.close()
@@ -148,12 +148,12 @@ watts = 10.0
     # Nach dem Update: dritte Stunde live erfasst (Pro mint mit 3.000 H/s, Air weiter 1.000 H/s)
     for i in range(60):
         ts = base + 7200 + 60 + i * 60
-        miners.record(cfg, "Pro", ts, True, True, 3000.0, 60, 12.0)
+        miners.record(cfg, "Pro", ts, True, True, 3000.0, 60, 15.0)
         miners.record(cfg, "Air", ts, True, True, 1000.0, 60, 10.0)
         miners.record(cfg, miners.NAS_DEVICE, ts, True, True, 0.0, 60, 4.0)
     h3 = {r["device"]: dict(r) for r in db.get().execute("SELECT * FROM activity_hourly WHERE hour=?", (base + 7200,))}
     assert h3["Pro"]["mining_s"] == 3600 and h3["Pro"]["hashes"] == 3000.0 * 3600 and h3["Pro"]["hr_max"] == 3000.0
-    assert abs(h3["Pro"]["kwh"] - 0.012) < 1e-12 and abs(h3["Pro"]["cost_eur"] - 0.0036) < 1e-12
+    assert abs(h3["Pro"]["kwh"] - 0.015) < 1e-12 and abs(h3["Pro"]["cost_eur"] - 0.0045) < 1e-12
 
     # Difficulty vom Node: Nachholen ab den ältesten Minutenwerten, höchstens ein Wert je Stunde
     assert network.backfill(cfg, base) > 0
@@ -173,7 +173,7 @@ watts = 10.0
     assert air["mining_s"] == 10800 and air["hr_avg"] == 1000.0
     hashes = 3000.0 * 3600 + 1000.0 * 10800
     assert t["hashes"] == hashes and t["mining_s"] == 14400  # NAS zählt nicht bei der Zeit
-    assert abs(t["kwh"] - (0.012 + 0.030 + 0.004)) < 1e-9  # Pro 1 h, Air 3 h, NAS 1 h
+    assert abs(t["kwh"] - (0.015 + 0.030 + 0.004)) < 1e-9  # Pro 1 h, Air 3 h, NAS 1 h
     exp = Decimal(hashes) / DIFF * REWARD / 10 ** 12
     assert abs(t["exp_xmr"] - exp) < Decimal("1e-15"), (t["exp_xmr"], exp)
     assert t["exp_missing_s"] == 0

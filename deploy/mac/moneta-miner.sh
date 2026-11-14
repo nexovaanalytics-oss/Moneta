@@ -24,7 +24,8 @@ DOMAIN="gui/$(id -u)"
 die() { echo "$*" >&2; exit 1; }
 need_plist() { [ -f "$PLIST" ] || die "LaunchAgent fehlt: $PLIST – zuerst deploy/mac/install.sh ausführen"; }
 loaded() { launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1; }
-pid() { launchctl print "$DOMAIN/$LABEL" 2>/dev/null | awk '$1 == "pid" && $2 == "=" {print $3; exit}'; }
+# Nicht geladen (gestoppt) ist kein Fehler: launchctl print scheitert dann, pid bleibt leer.
+pid() { { launchctl print "$DOMAIN/$LABEL" 2>/dev/null || true; } | awk '$1 == "pid" && $2 == "=" {print $3; exit}'; }
 
 cpu_count() { sysctl -n hw.ncpu 2>/dev/null || getconf _NPROCESSORS_ONLN; }
 

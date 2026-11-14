@@ -197,6 +197,7 @@ final class MinerModel: ObservableObject {
     private let apiPort = 18000
     private var timer: Timer?
     private var refreshing = false
+    private var statusFailed = false                       // lastError stammt aus refresh()
 
     init() {
         refresh()
@@ -443,9 +444,14 @@ final class MinerModel: ObservableObject {
                     self.summary = nil
                     self.threadRates = []
                     self.lastError = output.split(separator: "\n").last.map(String.init)
-                        ?? "moneta-miner.sh nicht gefunden – install.sh ausführen"
+                        ?? "moneta-miner.sh status fehlgeschlagen (\(code))"
+                    self.statusFailed = true
                     self.record()
                     return
+                }
+                if self.statusFailed {
+                    self.statusFailed = false
+                    self.lastError = nil
                 }
                 self.running = running
                 self.autostart = values["autostart"] == "1"

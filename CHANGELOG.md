@@ -12,6 +12,9 @@ Contributors: add user-facing changes under "Unreleased".
   and `ledger` and prints the log and rollback steps. `--check` only compares versions. The version stays pinned.
 
 **deploy/mac**
+- Fix: `moneta-miner.sh status` failed without output while XMRig was stopped (launchd agent not loaded), so the
+  menu bar app showed "moneta-miner.sh nicht gefunden – install.sh ausführen". The app now also clears a status
+  error as soon as the next status query succeeds.
 - New installer `deploy/mac/install.sh`: installs Homebrew and XMRig if needed, asks for pool address and threads,
   creates or takes over the API token, sets up XMRig as launchd agent `moneta.xmrig` (log, restart after a crash,
   optional autostart at login), allows `xmrig` in the macOS firewall on request and prints a ready-made

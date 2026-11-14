@@ -38,7 +38,7 @@ produit.
 ### D-05 · 13/11/2026 – Cours attribués localement depuis un historique à 5 minutes
 Des requêtes du type « cours au moment X » révéleraient les heures de paiement au fournisseur de cours ; combinées
 à l'adresse P2Pool publique, l'adresse IP pourrait être rattachée à l'adresse de minage. C'est pourquoi les
-dernières 24 h sont chargées toutes les 30 minutes et stockées localement ; l'attribution se fait localement
+dernières 24 h sont chargées à intervalle fixe (actuellement toutes les 10 minutes) et stockées localement ; l'attribution se fait localement
 (écart max. 15 min). Le cours du jour ne sert que de repli – seule la date est alors transmise.
 
 ### D-04 · 11/11/2026 – Coût de l'électricité = surconsommation mesurée × temps de minage enregistré

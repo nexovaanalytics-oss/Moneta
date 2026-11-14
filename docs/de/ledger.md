@@ -33,14 +33,20 @@ Nach Änderungen: `sudo docker restart xmr-ledger`.
 
 | Seite | Inhalt |
 |---|---|
-| Übersicht | Bestand, steuerfrei veräußerbar, Einnahmen/Strom/Ergebnis des Jahres, Gerätestatus, letzte Auszahlungen, Downloads |
+| Übersicht | Bestand, steuerfrei veräußerbar, Einnahmen/Strom/Ergebnis des Jahres, Gerätestatus mit Gesamtzeile (Hashrate und Mehrverbrauch aller minenden Geräte, ggf. inkl. NAS), letzte Auszahlungen, Downloads |
 | Zuflüsse | alle Auszahlungen mit Kurs und Kursquelle; sonstige Zugänge separat |
-| Strom | Mining-Stunden, Ø Watt, kWh, Ø ct/kWh, Kosten je Gerät und Monat |
+| Strom | Mining-Stunden, Ø Watt, kWh, Ø ct/kWh, Kosten je Gerät und Monat, dazu Summen über alle Geräte (Jahr und je Monat) |
 | Lose | FIFO-Lose mit Anschaffungskosten und „steuerfrei ab“ |
 | Abgänge | Überweisungen aus der Mining-Wallet erfassen/löschen |
 | Verkaufs-Rechner | geplanten Verkauf/Tausch simulieren (nichts wird gespeichert) |
 
 `/health` antwortet ohne Passwort mit `ok` (Docker-Healthcheck).
+
+**Aktualisierung:** Die Übersicht holt bei geöffnetem Tab alle 30 s neue Werte, ohne die Seite neu zu laden
+(`/api/live`, JSON, gleiche Anmeldung; pausiert im Hintergrund-Tab). Oben neben dem Jahr steht, wie alt der
+letzte Abruf ist, bzw. „Verbindung verloren“. Ohne JavaScript lädt die Übersicht alle 2 Minuten neu. Die Daten
+selbst holt der Ledger im Hintergrund: Rechner alle `poll_seconds` (Standard 60 s), Wallet alle 120 s,
+Kurshistorie alle 10 Minuten.
 
 ## Bedienung
 

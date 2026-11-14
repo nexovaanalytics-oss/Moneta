@@ -37,14 +37,20 @@ Tras cambios: `sudo docker restart xmr-ledger`.
 
 | Página | Contenido |
 |---|---|
-| **Übersicht** (resumen) | Saldo, importe vendible libre de impuestos, ingresos/electricidad/resultado del año, estado de los equipos, últimos pagos, descargas |
+| **Übersicht** (resumen) | Saldo, importe vendible libre de impuestos, ingresos/electricidad/resultado del año, estado de los equipos con fila de total (hashrate y consumo adicional de todos los equipos minando, incl. NAS si está configurado), últimos pagos, descargas |
 | **Zuflüsse** (entradas) | Todos los pagos con cotización y fuente; otras entradas por separado |
-| **Strom** (electricidad) | Horas de minería, vatios medios, kWh, ct/kWh medios, coste por equipo y mes |
+| **Strom** (electricidad) | Horas de minería, vatios medios, kWh, ct/kWh medios, coste por equipo y mes, más totales de todos los equipos (año y por mes) |
 | **Lose** (lotes) | Lotes FIFO con coste de adquisición y fecha **steuerfrei ab** (exento desde) |
 | **Abgänge** (salidas) | Registrar/borrar transferencias desde la billetera de minería |
 | **Verkaufs-Rechner** (calculadora de venta) | Simular una venta/permuta prevista (no se guarda nada) |
 
 `/health` responde `ok` sin contraseña (healthcheck de Docker).
+
+**Actualización:** mientras la pestaña está abierta, el resumen obtiene valores nuevos cada 30 s sin recargar la
+página (`/api/live`, JSON, mismo inicio de sesión; en pausa en una pestaña en segundo plano). Junto al año indica
+la antigüedad de la última consulta, o «Verbindung verloren» (conexión perdida). Sin JavaScript, el resumen se
+recarga cada 2 minutos. Los datos los recoge el propio ledger en segundo plano: equipos cada `poll_seconds`
+(60 s por defecto), billetera cada 120 s, historial de cotizaciones cada 10 minutos.
 
 ## Uso
 

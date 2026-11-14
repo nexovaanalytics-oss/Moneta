@@ -33,7 +33,7 @@ log = logging.getLogger("prices")
 API = "https://api.coingecko.com/api/v3"
 SOURCE_5MIN = "CoinGecko 5-Min-Kurs"
 MAX_DISTANCE_S = 15 * 60
-HISTORY_INTERVAL_S = 30 * 60
+HISTORY_INTERVAL_S = 10 * 60  # festes Raster, unabhängig von Auszahlungen (D-05)
 
 
 def _now() -> float:  # in Tests ersetzbar
@@ -69,14 +69,20 @@ def update_history(cfg: Config) -> int:
     return added
 
 
-def current_price(cfg: Config) -> Decimal | None:
-    """Jüngster lokal gespeicherter Kurs (höchstens 2 Stunden alt)."""
+def current_price_point(cfg: Config) -> tuple[Decimal, int] | None:
+    """Jüngster lokal gespeicherter Kurs mit Zeitpunkt (höchstens 2 Stunden alt)."""
     now = _now()
     row = db.get().execute("SELECT ts, eur FROM price_points WHERE ts <= ? ORDER BY ts DESC LIMIT 1",
                            (int(now) + 300,)).fetchone()
     if row and now - row["ts"] < 2 * 3600:
-        return Decimal(row["eur"])
+        return Decimal(row["eur"]), int(row["ts"])
     return None
+
+
+def current_price(cfg: Config) -> Decimal | None:
+    """Jüngster lokal gespeicherter Kurs (höchstens 2 Stunden alt)."""
+    pt = current_price_point(cfg)
+    return None if pt is None else pt[0]
 
 
 def _manual_overrides(cfg: Config) -> dict[str, Decimal]:

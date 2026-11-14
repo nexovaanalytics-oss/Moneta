@@ -37,14 +37,21 @@ Après une modification : `sudo docker restart xmr-ledger`.
 
 | Page | Contenu |
 |---|---|
-| **Übersicht** (vue d'ensemble) | Avoirs, montant cessible en franchise d'impôt, revenus/électricité/résultat de l'année, état des appareils, derniers paiements, téléchargements |
+| **Übersicht** (vue d'ensemble) | Avoirs, montant cessible en franchise d'impôt, revenus/électricité/résultat de l'année, état des appareils avec ligne de total (hashrate et surconsommation de tous les appareils en minage, NAS compris si défini), derniers paiements, téléchargements |
 | **Zuflüsse** (entrées) | Tous les paiements avec cours et source du cours ; autres entrées listées à part |
-| **Strom** (électricité) | Heures de minage, watts moyens, kWh, ct/kWh moyens, coût par appareil et par mois |
+| **Strom** (électricité) | Heures de minage, watts moyens, kWh, ct/kWh moyens, coût par appareil et par mois, plus totaux pour tous les appareils (année et par mois) |
 | **Lose** (lots) | Lots FIFO avec coût d'acquisition et date **steuerfrei ab** (exonéré à partir du) |
 | **Abgänge** (sorties) | Saisir/supprimer les transferts sortant du portefeuille de minage |
 | **Verkaufs-Rechner** (calculateur de vente) | Simuler une vente/un échange prévu (rien n'est enregistré) |
 
 `/health` répond `ok` sans mot de passe (healthcheck Docker).
+
+**Actualisation :** tant que l'onglet est ouvert, la vue d'ensemble récupère de nouvelles valeurs toutes les
+30 s sans recharger la page (`/api/live`, JSON, même identification ; en pause dans un onglet en arrière-plan).
+À côté de l'année, elle indique l'âge de la dernière récupération, ou « Verbindung verloren » (connexion perdue).
+Sans JavaScript, la vue d'ensemble se recharge toutes les 2 minutes. Les données elles-mêmes sont collectées par
+le ledger en arrière-plan : machines toutes les `poll_seconds` (60 s par défaut), portefeuille toutes les 120 s,
+historique des cours toutes les 10 minutes.
 
 ## Utilisation
 

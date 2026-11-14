@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hmac
 import html
+import json
 import logging
 import urllib.parse
 from datetime import date, datetime, time as dtime
@@ -91,7 +92,8 @@ NAV = [("/", "Übersicht"), ("/zufluesse", "Zuflüsse"), ("/strom", "Strom"), ("
 
 def page(path: str, title: str, body: str, refresh: int | None = None) -> str:
     nav = "".join(f'<a href="{h}" class="{"on" if h == path else ""}">{esc(t)}</a>' for h, t in NAV)
-    meta = f'<meta http-equiv="refresh" content="{refresh}">' if refresh else ""
+    # Rückfall ohne JavaScript; mit JavaScript aktualisiert /api/live die Übersicht ohne Neuladen.
+    meta = f'<noscript><meta http-equiv="refresh" content="{refresh}"></noscript>' if refresh else ""
     return (f'<!doctype html><html lang="de"><head><meta charset="utf-8">'
             f'<meta name="viewport" content="width=device-width,initial-scale=1">{meta}'
             f'<title>{esc(title)} – XMR-Ledger</title><style>{CSS}</style></head><body>'
@@ -112,27 +114,54 @@ def year_select(path: str, year: int) -> str:
 
 
 # ---------- Seiten ----------
-def p_overview(q) -> str:
-    year = int(q.get("jahr", [datetime.now(CFG.tz).year])[0])
-    s = ledger.year_summary(CFG, year)
-    h = ledger.holdings(CFG)
-    cur = prices.current_price(CFG)
-    value_now = None if cur is None else ledger.xmr(h["remaining"]) * cur
+LIVE_SECONDS = 30  # Abfrageintervall des Browsers für /api/live
 
-    werr = db.get_meta("wallet_error") or ""
-    wsync = db.get_meta("wallet_last_sync")
-    wheight = db.get_meta("wallet_height")
-    sync_state = (f'<span class="pill bad">Fehler</span> <span class="mut">{esc(werr)}</span>' if werr else
-                  f'<span class="pill ok">OK</span> Block {de(int(wheight), 0) if wheight else "–"}, '
-                  f'zuletzt {tsfmt(wsync)}' if wsync else '<span class="pill mut">noch kein Abgleich</span>')
+LIVE_JS = """
+(function(){
+  var ms=%d, url='/api/live'+location.search, last=Date.now(), ok=true, busy=false, timer=null;
+  var st=document.getElementById('live-state');
+  function show(){
+    var s=Math.round((Date.now()-last)/1000);
+    st.className='pill '+(ok?'ok':'bad');
+    st.textContent=(ok?'live':'Verbindung verloren')+' · Stand vor '+(s<60?s+' s':Math.round(s/60)+' Min.');
+  }
+  function tick(){
+    if(busy)return; busy=true;
+    var ac=new AbortController(), to=setTimeout(function(){ac.abort();},10000);
+    fetch(url,{credentials:'same-origin',cache:'no-store',signal:ac.signal})
+      .then(function(r){if(!r.ok)throw new Error(r.status);return r.json();})
+      .then(function(d){
+        Object.keys(d.html).forEach(function(k){
+          var el=document.querySelector('[data-live="'+k+'"]'); if(el)el.innerHTML=d.html[k];
+        });
+        last=Date.now(); ok=true;
+      })
+      .catch(function(){ok=false;})
+      .then(function(){clearTimeout(to); busy=false; show();});
+  }
+  function start(){if(!timer){tick(); timer=setInterval(tick,ms);}}
+  function stop(){clearInterval(timer); timer=null;}
+  document.addEventListener('visibilitychange',function(){document.hidden?stop():start();});
+  setInterval(show,5000); show();
+  if(!document.hidden)timer=setInterval(tick,ms);
+})();
+"""
 
+
+def _ov_warn(s) -> str:
+    if not s["missing_prices"]:
+        return ""
+    return (f'<p class="note">{s["missing_prices"]} Zufluss/Zuflüsse ohne Kurs – wird automatisch nachgeholt; '
+            f'sonst in <span class="mono">kurse_manuell.csv</span> eintragen.</p>')
+
+
+def _ov_cards(year: int, s, h, cur) -> str:
+    price, price_ts = cur if cur else (None, None)
+    value_now = None if price is None else ledger.xmr(h["remaining"]) * price
     fg = ('<span class="pill ok">unter 256 €</span>' if s["under_freigrenze_22"]
           else '<span class="pill warn">über 256 €</span>')
-    warn = (f'<p class="note">{s["missing_prices"]} Zufluss/Zuflüsse ohne Kurs – wird automatisch nachgeholt; '
-            f'sonst in <span class="mono">kurse_manuell.csv</span> eintragen.</p>') if s["missing_prices"] else ""
-
-    cards = f"""
-    <div class="grid">
+    stand = f"Stand {datetime.fromtimestamp(price_ts, CFG.tz).strftime('%H:%M')}" if price_ts else "kein aktueller Kurs"
+    return f"""
       <div class="card"><div class="k">Bestand (Mining-Lose)</div><div class="v">{xmrf(h['remaining'])} XMR</div>
         <div class="s">aktuell ≈ {eurf(None if value_now is None else ledger.eur(value_now))} · AK {eurf(h['cost'])}</div></div>
       <div class="card"><div class="k">davon steuerfrei veräußerbar</div><div class="v">{xmrf(h['free_now'])} XMR</div>
@@ -143,11 +172,20 @@ def p_overview(q) -> str:
         <div class="s">{de(s['power_kwh'], 1)} kWh</div></div>
       <div class="card"><div class="k">Ergebnis {year} (Einnahmen − Strom)</div><div class="v">{eurf(s['result'])}</div>
         <div class="s">Freigrenze: {fg}</div></div>
-      <div class="card"><div class="k">XMR-Kurs aktuell</div><div class="v">{eurf(cur)}</div>
-        <div class="s">CoinGecko, lokal gespeichert</div></div>
-    </div>"""
+      <div class="card"><div class="k">XMR-Kurs aktuell</div><div class="v">{eurf(price)}</div>
+        <div class="s">CoinGecko, {stand}</div></div>"""
 
-    live = miners.live_status()
+
+def _ov_sync() -> str:
+    werr = db.get_meta("wallet_error") or ""
+    wsync = db.get_meta("wallet_last_sync")
+    wheight = db.get_meta("wallet_height")
+    return (f'<span class="pill bad">Fehler</span> <span class="mut">{esc(werr)}</span>' if werr else
+            f'<span class="pill ok">OK</span> Block {de(int(wheight), 0) if wheight else "–"}, '
+            f'zuletzt {tsfmt(wsync)}' if wsync else '<span class="pill mut">noch kein Abgleich</span>')
+
+
+def _ov_devices(live) -> str:
     rows = ""
     for m in CFG.miners:
         st = live.get(m.name)
@@ -162,22 +200,74 @@ def p_overview(q) -> str:
         rows += (f"<tr><td>{esc(m.name)}</td><td>{state}</td>"
                  f"<td class='n'>{de(st['hashrate'], 0) if st else '–'} H/s</td>"
                  f"<td class='n'>{de(m.watts, 1)} W</td><td class='mut'>{tsfmt(st['ts']) if st else '–'}</td></tr>")
-    devices = (f"<h2>Geräte</h2><table><tr><th>Gerät</th><th>Status</th><th class='n'>Hashrate</th>"
-               f"<th class='n'>Mehrverbrauch</th><th>letzte Abfrage</th></tr>{rows or '<tr><td colspan=5 class=mut>Keine Rechner in config.toml</td></tr>'}</table>")
+    t = device_totals(live)
+    total = ""
+    if CFG.miners:
+        nas = f"inkl. NAS {de(CFG.nas_extra_watts, 1)} W" if CFG.nas_extra_watts > 0 else ""
+        total = (f"<tr style='font-weight:600;background:#f0f2f5'><td>Gesamt</td>"
+                 f"<td>{t['mining']} von {t['count']} minen</td>"
+                 f"<td class='n'>{de(t['hashrate'], 0)} H/s</td><td class='n'>{de(t['watts'], 1)} W</td>"
+                 f"<td class='mut' style='font-weight:400'>{nas}</td></tr>")
+    return (f"<tr><th>Gerät</th><th>Status</th><th class='n'>Hashrate</th>"
+            f"<th class='n'>Mehrverbrauch</th><th>letzte Abfrage</th></tr>"
+            f"{rows or '<tr><td colspan=5 class=mut>Keine Rechner in config.toml</td></tr>'}{total}")
 
+
+def device_totals(live) -> dict:
+    """Summe über alle Rechner: Hashrate und Mehrverbrauch der gerade minenden Geräte (+ NAS, falls angesetzt)."""
+    active = [m for m in CFG.miners if (live.get(m.name) or {}).get("mining")]
+    return {"count": len(CFG.miners), "mining": len(active),
+            "hashrate": sum(live[m.name]["hashrate"] or 0.0 for m in active),
+            "watts": sum(m.watts for m in active) + max(CFG.nas_extra_watts, 0.0)}
+
+
+def _ov_recent(s) -> str:
     last = s["inflows"][-12:][::-1]
     inrows = "".join(
         f"<tr><td>{x['dt'].strftime('%d.%m.%Y %H:%M')}</td><td class='n'>{x['height']}</td>"
         f"<td class='n'>{xmrf(x['amount'], 8)}</td><td class='n'>{eurf(x['price'])}</td>"
         f"<td class='n'>{eurf(None if x['value'] is None else ledger.eur(x['value']))}</td></tr>" for x in last)
-    recent = (f"<h2>Letzte Auszahlungen</h2><table><tr><th>Zeit</th><th class='n'>Block</th><th class='n'>XMR</th>"
-              f"<th class='n'>Kurs</th><th class='n'>Wert</th></tr>"
-              f"{inrows or '<tr><td colspan=5 class=mut>Noch keine Auszahlungen</td></tr>'}</table>")
+    return (f"<tr><th>Zeit</th><th class='n'>Block</th><th class='n'>XMR</th>"
+            f"<th class='n'>Kurs</th><th class='n'>Wert</th></tr>"
+            f"{inrows or '<tr><td colspan=5 class=mut>Noch keine Auszahlungen</td></tr>'}")
 
-    body = (f"<h1>Übersicht {year_select('/', year)}</h1>{warn}{cards}"
-            f"<h2>Wallet-Abgleich</h2><p>{sync_state}</p>{devices}{recent}"
+
+def overview_live(year: int) -> dict:
+    """Daten der Übersicht für das Live-Update (/api/live): Rohwerte plus fertige HTML-Teile."""
+    s = ledger.year_summary(CFG, year)
+    h = ledger.holdings(CFG)
+    cur = prices.current_price_point(CFG)
+    live = miners.live_status()
+    wh = db.get_meta("wallet_height")
+    ws = db.get_meta("wallet_last_sync")
+    return {
+        "now": int(datetime.now(CFG.tz).timestamp()),
+        "version": version.label(),
+        "price": None if cur is None else {"eur": str(cur[0]), "ts": cur[1]},
+        "wallet": {"height": int(wh) if wh else None, "last_sync": int(float(ws)) if ws else None,
+                   "error": db.get_meta("wallet_error") or None},
+        "miners": [{"name": m.name, "reachable": (live.get(m.name) or {}).get("reachable"),
+                    "mining": (live.get(m.name) or {}).get("mining"),
+                    "hashrate": (live.get(m.name) or {}).get("hashrate"),
+                    "ts": (live.get(m.name) or {}).get("ts")} for m in CFG.miners],
+        "totals": device_totals(live),
+        "html": {"warn": _ov_warn(s), "cards": _ov_cards(year, s, h, cur), "sync": _ov_sync(),
+                 "devices": _ov_devices(live), "recent": _ov_recent(s)},
+    }
+
+
+def p_overview(q) -> str:
+    year = int(q.get("jahr", [datetime.now(CFG.tz).year])[0])
+    d = overview_live(year)["html"]
+    body = (f"<h1>Übersicht {year_select('/', year)} <span id='live-state' class='pill mut' "
+            f"style='vertical-align:middle'>Live-Update aus</span></h1>"
+            f"<div data-live='warn'>{d['warn']}</div><div class='grid' data-live='cards'>{d['cards']}</div>"
+            f"<h2>Wallet-Abgleich</h2><p data-live='sync'>{d['sync']}</p>"
+            f"<h2>Geräte</h2><table data-live='devices'>{d['devices']}</table>"
+            f"<h2>Letzte Auszahlungen</h2><table data-live='recent'>{d['recent']}</table>"
             f'<h2>Jahresbericht</h2><p><a class="btn" href="/bericht.xlsx?jahr={year}">Excel-Bericht {year}</a> '
-            f'<a class="btn" style="background:#475467" href="/zufluesse.csv?jahr={year}">Zuflüsse als CSV</a></p>')
+            f'<a class="btn" style="background:#475467" href="/zufluesse.csv?jahr={year}">Zuflüsse als CSV</a></p>'
+            f"<script>{LIVE_JS % (LIVE_SECONDS * 1000)}</script>")
     return page("/", "Übersicht", body, refresh=120)
 
 
@@ -215,13 +305,31 @@ def p_power(q) -> str:
     tot = ledger.power_by_device(CFG, year)
     tr2 = "".join(f"<tr><td>{esc(p['device'])}</td><td class='n'>{de((p['secs'] or 0) / 3600, 1)} h</td>"
                   f"<td class='n'>{de(p['kwh'], 3)}</td><td class='n'>{eurf(p['cost'])}</td></tr>" for p in tot)
+    sum_style = "style='font-weight:600;background:#f0f2f5'"
+    if tot:
+        tr2 += (f"<tr {sum_style}><td>Summe</td><td class='n'>{de(sum(p['secs'] or 0 for p in tot) / 3600, 1)} h</td>"
+                f"<td class='n'>{de(sum(p['kwh'] or 0 for p in tot), 3)}</td>"
+                f"<td class='n'>{eurf(sum(p['cost'] or 0 for p in tot))}</td></tr>")
+    months: dict[str, dict] = {}
+    for p in pm:
+        mo = months.setdefault(p["month"], {"secs": 0, "kwh": 0.0, "cost": 0.0})
+        mo["secs"] += p["secs"] or 0
+        mo["kwh"] += p["kwh"] or 0.0
+        mo["cost"] += p["cost"] or 0.0
+    tr3 = "".join(
+        f"<tr><td>{mo}</td><td class='n'>{de(v['secs'] / 3600, 1)} h</td><td class='n'>{de(v['kwh'], 3)}</td>"
+        f"<td class='n'>{de(v['cost'] / v['kwh'] * 100 if v['kwh'] else None, 2)} ct</td>"
+        f"<td class='n'>{eurf(v['cost'])}</td></tr>" for mo, v in months.items())
     tariffs = ", ".join(f"ab {t.valid_from.strftime('%d.%m.%Y')}: {de(t.ct_per_kwh)} ct/kWh" for t in CFG.tariffs)
     body = (f"<h1>Strom {year_select('/strom', year)}</h1>"
             f"<p class='mut'>Methode: gemessener Mehrverbrauch × protokollierte Mining-Zeit × Strompreis "
             f"({esc(tariffs)}). Abfrage alle {CFG.poll_seconds} s.</p>"
             f"<h2>Je Gerät</h2><table><tr><th>Gerät</th><th class='n'>Mining-Zeit</th><th class='n'>kWh</th>"
             f"<th class='n'>Kosten</th></tr>{tr2 or '<tr><td colspan=4 class=mut>noch keine Daten</td></tr>'}</table>"
-            f"<h2>Je Monat</h2><table><tr><th>Monat</th><th>Gerät</th><th class='n'>Mining-Zeit</th>"
+            f"<h2>Je Monat, alle Geräte</h2><table><tr><th>Monat</th><th class='n'>Mining-Zeit (Geräte-h)</th>"
+            f"<th class='n'>kWh</th><th class='n'>Ø Preis</th><th class='n'>Kosten</th></tr>"
+            f"{tr3 or '<tr><td colspan=5 class=mut>noch keine Daten</td></tr>'}</table>"
+            f"<h2>Je Monat und Gerät</h2><table><tr><th>Monat</th><th>Gerät</th><th class='n'>Mining-Zeit</th>"
             f"<th class='n'>Ø Hashrate</th><th class='n'>Ø Watt</th><th class='n'>kWh</th><th class='n'>Ø Preis</th>"
             f"<th class='n'>Kosten</th></tr>{tr or '<tr><td colspan=8 class=mut>noch keine Daten</td></tr>'}</table>")
     return page("/strom", "Strom", body)
@@ -406,6 +514,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if u.path == "/":
                 self._send(p_overview(q).encode())
+            elif u.path == "/api/live":
+                self._send(json.dumps(overview_live(year), ensure_ascii=False).encode(),
+                           "application/json; charset=utf-8")
             elif u.path == "/zufluesse":
                 self._send(p_inflows(q).encode())
             elif u.path == "/strom":

@@ -287,10 +287,13 @@ final class MinerModel: ObservableObject {
     }
 
     var dashboardURL: URL? {
-        let custom = confDir.appendingPathComponent("dashboard")
-        if let text = try? String(contentsOf: custom, encoding: .utf8)
-            .trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
-            return URL(string: text)
+        // eigene Adresse, sonst die vom Installer gekoppelte Ledger-Adresse
+        for file in ["dashboard", "ledger"] {
+            let url = confDir.appendingPathComponent(file)
+            if let text = try? String(contentsOf: url, encoding: .utf8)
+                .trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+                return URL(string: text)
+            }
         }
         // Vorgabe: Dashboard auf demselben Host wie der Pool, Port 8090 (deploy/nas/compose.yaml)
         let poolFile = confDir.appendingPathComponent("pool")

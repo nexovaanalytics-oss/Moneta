@@ -12,6 +12,15 @@ Contributors: add user-facing changes under "Unreleased".
 - Totals across all devices: the device table on the overview gets a "Gesamt" row (devices mining, combined
   hashrate, combined extra power of the mining devices incl. NAS if configured; also in `/api/live` as
   `totals`); the electricity page gets a sum row per device and a new table "Je Monat, alle Geräte".
+- New page **Auswertung** (analysis) for any time range (presets: last night, 24 h, 7/30 days, month, year, or
+  from–to): per device time mining/paused/unreachable with a timeline, avg./max. hashrate, hashes, kWh and cost;
+  expected value (hashes ÷ difficulty × block reward) compared with the actual payouts; per-day table; CSV export.
+  Display only – the report and tax figures still come from the inflows and electricity pages.
+- New table `activity_hourly` (DB schema v3, additive): hourly values per device, kept indefinitely, because
+  per-minute values are deleted after 30 days. Existing per-minute values are copied over once on first start.
+- New table `network_samples`: difficulty and block reward, one value per hour, from your own node's restricted
+  RPC (`[node] rpc_url`, default `http://monerod:18089/json_rpc`; empty disables it). Missing hours are fetched
+  once from block headers. No external requests.
 - The current XMR price card shows the time of the price point ("Stand HH:MM").
 - Price history (last 24 h, 5-minute points) is fetched every 10 min instead of every 30 min. Still a fixed
   interval without reference to payouts; price matching per inflow is unchanged.

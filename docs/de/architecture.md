@@ -18,7 +18,7 @@
 | Port | Dienst | Erreichbar |
 |---|---|---|
 | 18080/tcp | monerod P2P | Internet ausgehend; eingehend nur bei Portfreigabe (optional) |
-| 18089/tcp | monerod eingeschränkter RPC | LAN (Wallets, P2Pool, wallet-rpc) |
+| 18089/tcp | monerod eingeschränkter RPC | LAN (Wallets, P2Pool, wallet-rpc, Ledger) |
 | 18084/tcp | monerod ZMQ | nur Docker-intern |
 | 3333/tcp | P2Pool Stratum | LAN (Miner) |
 | 37888/tcp | P2Pool P2P (mini) | Internet ausgehend |
@@ -35,6 +35,8 @@ Stratum, RPC und Dashboard **nie** per Portfreigabe ins Internet stellen. Bei ak
                  alle 60 s                         alle 120 s
 XMRig-API (Rechner) ──────▶ miners.py ──▶ power_daily / power_samples
                                          (Mining-Zeit × Watt × Tarif, festgeschrieben)
+                                         + activity_hourly (Stundenwerte, nur Auswertung)
+monerod (eigener Node, stündlich) ──▶ network.py ──▶ network_samples (Difficulty, Blockbelohnung)
 
 wallet-rpc ──────────────▶ walletsync.py ──▶ inflows  (Coinbase = Mining-Zufluss, sonst "sonstiger Zugang")
                                                 │

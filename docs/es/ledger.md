@@ -20,6 +20,7 @@ comentarios en alemán). Contiene la **clave de visualización**: no la comparta
 | `[wallet]` | `address` (4…), `view_key` (`viewkey` → secret), `restore_height` (altura de bloque poco antes de crear la billetera), `wallet_password` (libre) |
 | `[web]` | `port`, `user`, `password` (obligatorio) |
 | `[prices]` | `coingecko_api_key` (opcional; una clave demo gratuita eleva el límite de consultas) |
+| `[node]` | `rpc_url` de tu propio nodo para dificultad y recompensa de bloque (por defecto `http://monerod:18089/json_rpc`, vacío = desactivado) |
 | `[power]` | `poll_seconds`, `nas_extra_watts` (0 = no contabilizar el NAS), `[[power.tariff]]` con `valid_from`, `ct_per_kwh` |
 | `[[miner]]` | por equipo: `name`, `url` (`http://IP:18000`), `token`, `watts` (consumo adicional), `note` (medición) |
 
@@ -40,6 +41,7 @@ Tras cambios: `sudo docker restart xmr-ledger`.
 | **Übersicht** (resumen) | Saldo, importe vendible libre de impuestos, ingresos/electricidad/resultado del año, estado de los equipos con fila de total (hashrate y consumo adicional de todos los equipos minando, incl. NAS si está configurado), últimos pagos, descargas |
 | **Zuflüsse** (entradas) | Todos los pagos con cotización y fuente; otras entradas por separado |
 | **Strom** (electricidad) | Horas de minería, vatios medios, kWh, ct/kWh medios, coste por equipo y mes, más totales de todos los equipos (año y por mes) |
+| **Auswertung** (análisis) | Periodo a elección (preajustes: última noche, 24 h, 7/30 días, mes, año): por equipo, tiempo minando/en pausa/inaccesible con línea de tiempo, hashrate medio/máx., hashes, kWh, coste; valor esperado (hashes ÷ dificultad × recompensa de bloque) frente a pagos reales; por día; CSV |
 | **Lose** (lotes) | Lotes FIFO con coste de adquisición y fecha **steuerfrei ab** (exento desde) |
 | **Abgänge** (salidas) | Registrar/borrar transferencias desde la billetera de minería |
 | **Verkaufs-Rechner** (calculadora de venta) | Simular una venta/permuta prevista (no se guarda nada) |
@@ -74,6 +76,8 @@ recarga cada 2 minutos. Los datos los recoge el propio ledger en segundo plano: 
 | `walletsync.py` | wallet-rpc: crear/abrir la billetera, leer entradas, limpiar tras reorganizaciones |
 | `prices.py` | Historial de cotizaciones de 5 minutos, asignación de cotizaciones, respaldo con cotización diaria, cotizaciones manuales |
 | `miners.py` | Consultar la API de XMRig, registrar tiempo de minería y costes |
+| `activity.py` | Valores por hora por equipo, análisis por periodos |
+| `network.py` | Dificultad y recompensa de bloque desde tu propio nodo |
 | `ledger.py` | Lotes, FIFO, plazos, resumen anual, calculadora de venta |
 | `report.py` | Exportación a Excel y CSV |
 | `web.py` | Panel, formularios, descargas, autenticación, protección CSRF |
@@ -83,6 +87,9 @@ Pruebas: `python -m pytest -q ledger/tests` (billetera, XMRig y cotizaciones sim
 
 ## Limitaciones
 
+- Análisis: los valores por minuto (con línea de tiempo) se conservan 30 días, después valores por hora. Hashes =
+  hashrate informado × intervalo de consulta (aproximación); el valor esperado ignora uncles/huérfanos. Solo
+  visualización, no es base fiscal.
 - CoinGecko (gratuito, sin garantía); con la API gratuita, las cotizaciones históricas solo llegan a
   aproximadamente un año atrás.
 - El tiempo de minería solo cuenta mientras el ledger está en marcha y alcanza el equipo (los costes tienden a

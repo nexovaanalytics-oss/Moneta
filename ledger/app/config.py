@@ -41,6 +41,8 @@ class Config:
     web_password: str = ""
     # Kurse
     coingecko_api_key: str = ""
+    # Eigener Node (eingeschränkter RPC) für Difficulty/Blockbelohnung; leer = aus
+    node_rpc_url: str = "http://monerod:18089/json_rpc"
     # Strom
     poll_seconds: int = 60
     nas_extra_watts: float = 0.0
@@ -76,6 +78,7 @@ def load(path: str) -> Config:
     pr = raw.get("prices", {})
     pw = raw.get("power", {})
     gen = raw.get("general", {})
+    node = raw.get("node", {})
 
     for key in ("address", "view_key", "restore_height", "wallet_password"):
         if key not in w or w[key] in ("", None):
@@ -114,6 +117,7 @@ def load(path: str) -> Config:
         web_user=str(web.get("user", "admin")),
         web_password=str(web["password"]),
         coingecko_api_key=str(pr.get("coingecko_api_key", "")),
+        node_rpc_url=str(node.get("rpc_url", "http://monerod:18089/json_rpc")),
         poll_seconds=int(pw.get("poll_seconds", 60)),
         nas_extra_watts=float(pw.get("nas_extra_watts", 0.0)),
         nas_note=str(pw.get("nas_note", "")),

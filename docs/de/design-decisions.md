@@ -5,6 +5,16 @@
 Warum Moneta so gebaut ist. Neue Einträge oben anfügen (Datum, Kontext, Entscheidung, Folgen).
 Diese deutsche Fassung ist die Referenz; Übersetzungen bitte mitziehen.
 
+### D-09 · 13.11.2026 – Miner-Start per Menüleisten-App, lokal gebaut statt signiert verteilt
+Rechner sollen sich ohne Terminal-Kenntnisse einrichten und per Knopf starten lassen. Ein Installer
+(`deploy/mac/install.sh`) richtet XMRig als launchd-Agent ein und baut die Menüleisten-App aus dem Quellcode auf
+dem Rechner selbst (`swiftc` aus den Command Line Tools, die Homebrew ohnehin braucht). Lokal gebaute Programme
+tragen kein Quarantäne-Attribut; Gatekeeper fragt deshalb nicht nach, und es braucht weder ein kostenpflichtiges
+Apple-Entwicklerkonto noch eine Notarisierung. XMRig wird nicht mitgeliefert, sondern über Homebrew installiert
+(DONATE 0 %, eigene Updates); die App steuert nur den Agent und liest die lokale XMRig-API. Der `[[miner]]`-Eintrag
+in der `config.toml` bleibt bewusst ein manueller Schritt: Die Watt werden je Erfassung festgeschrieben und müssen
+vorher gemessen sein. Eine signierte, notarisierte App zum Herunterladen bleibt eine Option für später.
+
 ### D-08 · 13.11.2026 – Mehrsprachig und offen für Mitwirkende
 Moneta soll über den deutschsprachigen Raum hinaus nutzbar sein und zum Mitmachen einladen. Projektsprache der
 Community-Dateien (README, CONTRIBUTING, CHANGELOG, SECURITY, Vorlagen) ist Englisch; README, CONTRIBUTING und

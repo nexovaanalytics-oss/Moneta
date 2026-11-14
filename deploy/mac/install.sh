@@ -228,22 +228,28 @@ profile="$("$SRC_DIR/profil.sh" 2>/dev/null || echo '{}')"
 suggest="$(json_get "$profile" suggestion.threads)"
 echo "  $(json_get "$profile" model_name) · $(json_get "$profile" chip) · $ncpu Kerne" \
      "($(json_get "$profile" cores.performance) Performance, $(json_get "$profile" cores.efficiency) Effizienz)"
-echo "  Empfehlung: ${suggest:-all} Threads – $(json_get "$profile" suggestion.source)"
+echo "  Vorschlag ohne Messung: ${suggest:-all} von $ncpu Threads – $(json_get "$profile" suggestion.source)"
 measure_file="$CONF_DIR/einmessung.json"
-echo "  Genauer: einmessen.sh misst Hashrate und Mehrverbrauch für 2 Thread-Zahlen (mit Lüfter ≈ 10 Min.,"
-echo "  lüfterlos ≈ 25 Min.; Netzteil, sudo, Mac währenddessen nicht benutzen) und schlägt Threads und Watt vor."
+echo "  Genauer: einmessen.sh misst Hashrate und Mehrverbrauch stufenweise bis zu allen $ncpu Kernen (mit Lüfter"
+echo "  ≈ 10 Min., lüfterlos ≈ 30 Min.; Netzteil, sudo, Mac währenddessen nicht benutzen) und schlägt Threads und Watt vor."
 if [ -s "$measure_file" ]; then
   echo "  Letzte Einmessung: $(json_get "$(cat "$measure_file")" date) – $(json_get "$(cat "$measure_file")" choice.threads) Threads," \
-       "$(json_get "$(cat "$measure_file")" choice.watts) W"
+       "$(json_get "$(cat "$measure_file")" choice.watts) W ($(json_get "$(cat "$measure_file")" choice.criterion))"
 fi
+measured_now=false
 if yes_no "Jetzt einmessen?" n "${MEASURE:-}"; then
-  "$SRC_DIR/einmessen.sh" || warn "Einmessen abgebrochen – es geht mit der Empfehlung weiter."
+  if "$SRC_DIR/einmessen.sh"; then measured_now=true; else warn "Einmessen abgebrochen – es geht mit dem Vorschlag weiter."; fi
 fi
 measured_threads=""
 [ -s "$measure_file" ] && measured_threads="$(json_get "$(cat "$measure_file")" choice.threads)"
 old_threads="$( { [ -r "$CONF_DIR/threads" ] && tr -d '[:space:]' < "$CONF_DIR/threads"; } || true )"
+if [ "$measured_now" = true ]; then
+  default_threads="$measured_threads"            # frische Messung schlägt die alte Einstellung
+else
+  default_threads="${old_threads:-${measured_threads:-${suggest:-all}}}"
+fi
 while :; do
-  threads="$(ask "Threads (Zahl oder all)" "${old_threads:-${measured_threads:-${suggest:-all}}}" "${THREADS:-}")"
+  threads="$(ask "Threads (1–$ncpu oder all)" "${default_threads:-all}" "${THREADS:-}")"
   if [ "$threads" = all ] || { [[ "$threads" =~ ^[0-9]+$ ]] && [ "$threads" -ge 1 ] && [ "$threads" -le "$ncpu" ]; }; then
     break
   fi

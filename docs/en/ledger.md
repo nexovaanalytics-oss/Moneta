@@ -50,7 +50,10 @@ After changes: `sudo docker restart xmr-ledger`.
 `/health` answers `ok` without a password (Docker healthcheck).
 
 `/api/moneta` also answers without a password, but only with the service name, version, stratum address and
-whether pairing is possible – this is how new computers find the ledger in the home network. `/api/pair`
+whether pairing is possible – this is how new computers find the ledger in the home network. Under `economics` it
+also returns the figures for the thread choice when measuring: difficulty and block reward from your own node, the
+latest local price (at most 2 hours old) and the current tariff, plus revenue per H/s and electricity cost per
+watt and day (`null` while the node value or price is missing). `/api/pair`
 (pairing code) and `/api/heartbeat` (device token) only accept JSON from computers, see
 [Pairing computers](#pairing-computers).
 

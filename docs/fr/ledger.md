@@ -52,7 +52,10 @@ Après une modification : `sudo docker restart xmr-ledger`.
 
 `/api/moneta` répond également sans mot de passe, mais uniquement avec le nom du service, la version, l'adresse
 stratum et la possibilité d'appairage – c'est ainsi que les nouveaux ordinateurs trouvent le ledger dans le réseau
-local. `/api/pair` (code d'appairage) et `/api/heartbeat` (jeton de l'appareil) n'acceptent que du JSON envoyé
+local. Sous `economics`, il renvoie aussi les valeurs pour le choix des threads lors de la mesure : difficulté et
+récompense de bloc de votre propre nœud, dernier cours local (2 heures au plus) et tarif actuel, ainsi que le
+rendement par H/s et le coût d'électricité par watt et par jour (`null` tant que la valeur du nœud ou le cours
+manque). `/api/pair` (code d'appairage) et `/api/heartbeat` (jeton de l'appareil) n'acceptent que du JSON envoyé
 par les ordinateurs, voir [Appairer des ordinateurs](#appairer-des-ordinateurs).
 
 **Actualisation :** tant que l'onglet est ouvert, la vue d'ensemble récupère de nouvelles valeurs toutes les

@@ -5,6 +5,16 @@
 Pourquoi Moneta est construit ainsi. Ajouter les nouvelles entrées en haut (date, contexte, décision,
 conséquences). La [version allemande](../de/design-decisions.md) sert de référence.
 
+### D-11 · 14.11.2026 – Choisir les threads selon l'utilité marginale plutôt qu'une règle empirique
+La règle « sans ventilateur : cœurs performance − 1 » vient d'un M1 et ignore les cœurs efficacité ; sur un M4
+(4 + 6 cœurs), six cœurs n'étaient pas testés. `einmessen.sh` mesure donc des paliers jusqu'à tous les cœurs et
+propose le palier au meilleur solde entre rendement calculé et coût d'électricité. Le ledger fournit les valeurs
+sous `economics` dans `GET /api/moneta` à partir de données qu'il possède déjà (difficulté de votre propre nœud,
+cours local, tarif) – sans requête vers Internet et sans lien avec des versements individuels. Le cours et le tarif
+sont donc lisibles sans mot de passe dans le réseau local ; c'est nécessaire au choix des threads, car un nouvel
+ordinateur n'a pas de jeton avant l'appairage. Sans ces valeurs, le meilleur hashrate par watt s'applique. Le
+calcul ne sert qu'au choix des threads et n'est pas enregistré.
+
 ### D-10 · 14/11/2026 – Appairer de nouveaux ordinateurs par code, validation dans le tableau de bord
 De nouveaux ordinateurs doivent pouvoir s'ajouter sans modification manuelle de `config.toml`. Le ledger sert de
 point central : il répond sans mot de passe à `GET /api/moneta` (service, version, adresse stratum uniquement) afin

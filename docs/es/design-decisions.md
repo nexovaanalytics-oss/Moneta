@@ -5,6 +5,16 @@
 Por qué Moneta está construido así. Añadir las nuevas entradas arriba (fecha, contexto, decisión,
 consecuencias). La [versión alemana](../de/design-decisions.md) es la de referencia.
 
+### D-11 · 14.11.2026 – Elegir los hilos por utilidad marginal en lugar de una regla general
+La regla «sin ventilador: núcleos de rendimiento − 1» procede de un M1 e ignora los núcleos de eficiencia; en un M4
+(4 + 6 núcleos) quedaban seis núcleos sin probar. Por eso `einmessen.sh` mide escalones hasta todos los núcleos y
+propone el escalón con el mejor saldo entre rendimiento calculado y coste eléctrico. El ledger aporta los valores
+en `economics` de `GET /api/moneta` a partir de datos que ya tiene (dificultad del propio nodo, cotización local,
+tarifa), sin consultas a Internet y sin relación con pagos individuales. Así, la cotización y la tarifa pueden
+leerse en la red local sin contraseña; la elección de hilos lo necesita, porque un equipo nuevo no tiene token
+antes del emparejamiento. Sin esos valores sigue valiendo el mejor hashrate por vatio. El cálculo solo sirve para
+elegir los hilos y no se guarda.
+
 ### D-10 · 14/11/2026 – Emparejar equipos nuevos con un código, aprobación en el panel
 Los equipos nuevos deben poder añadirse sin editar `config.toml` a mano. El ledger hace de punto central: responde
 sin contraseña a `GET /api/moneta` (solo servicio, versión y dirección stratum) para que el instalador y la app lo

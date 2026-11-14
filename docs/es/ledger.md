@@ -52,6 +52,9 @@ Tras cambios: `sudo docker restart xmr-ledger`.
 
 `/api/moneta` también responde sin contraseña, pero solo con el nombre del servicio, la versión, la dirección
 stratum y si el emparejamiento es posible: así encuentran los equipos nuevos el ledger en la red doméstica.
+En `economics` devuelve además los valores para elegir los hilos al medir: dificultad y recompensa de bloque de tu
+propio nodo, la última cotización local (de 2 horas como máximo) y la tarifa actual, y con ello el rendimiento por
+H/s y el coste eléctrico por vatio y día (`null` mientras falten el valor del nodo o la cotización).
 `/api/pair` (código de emparejamiento) y `/api/heartbeat` (token del equipo) solo aceptan JSON de los equipos,
 consulta [Emparejar equipos](#emparejar-equipos).
 

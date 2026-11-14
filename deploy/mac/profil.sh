@@ -36,7 +36,7 @@ fi
 if [ -z "$threads" ]; then
   if [ "$fanless" = 1 ] && [ -n "$pcores" ]; then
     threads=$(( pcores > 1 ? pcores - 1 : 1 ))
-    source="Faustregel: lüfterlos → Performance-Kerne − 1 (drosselt sonst unter Dauerlast)"
+    source="Faustregel: lüfterlos → Performance-Kerne − 1 (drosselt sonst unter Dauerlast); einmessen.sh prüft auch mehr"
   else
     threads=all
     source="Faustregel: mit Lüfter → alle Kerne"

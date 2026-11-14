@@ -5,6 +5,16 @@
 Why Moneta is built the way it is. Add new entries at the top (date, context, decision, consequences).
 The [German version](../de/design-decisions.md) is the reference.
 
+### D-11 · 14.11.2026 – Choose threads by marginal benefit instead of a rule of thumb
+The rule of thumb "fanless: performance cores − 1" comes from an M1 and ignores efficiency cores; on an M4
+(4 + 6 cores) six cores went untested. `einmessen.sh` therefore measures a ladder of steps up to all cores and
+suggests the step with the highest balance of calculated revenue and electricity cost. The ledger supplies the
+figures under `economics` in `GET /api/moneta` from data it already has (difficulty from your own node, local
+price, tariff) – no request to the internet and no link to individual payouts. Price and tariff can therefore be
+read in the LAN without a password; the thread choice needs that because a new computer has no token before
+pairing. Without the figures, the best hashrate per watt still applies. The calculation only serves the thread
+choice and is not stored.
+
 ### D-10 · 2026-11-14 – Pairing new computers with a code, approval in the dashboard
 New computers should join without manual edits to `config.toml`. The ledger acts as the control point: it answers
 `GET /api/moneta` without a password (service, version, stratum address only) so the installer and app can find it

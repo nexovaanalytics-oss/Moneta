@@ -96,7 +96,24 @@ Messwerte für ein anderes Gerät? Gern per Issue („Device measurement“) tei
 Erst wenn der Node synchron ist und P2Pool „healthy“ meldet:
 
 Mit dem Installer eingerichtet: Menüleiste → **Moneta Miner** → *Miner starten* / *Miner stoppen*; dort auch
-Threads, Autostart beim Anmelden, Hashrate, Pool-Verbindung und das Log. Dasselbe im Terminal:
+Threads, Autostart beim Anmelden, das Log und der Sprung ins Dashboard. Das Fenster der App zeigt den Betrieb
+dieses Macs:
+
+- die aktuelle Hashrate neben dem Symbol in der Menüleiste (abschaltbar),
+- den Verlauf der letzten 15 Min. / 1 Std. / 6 Std. mit Zeitleiste *läuft / pausiert / gestoppt*, Ø-Hashrate
+  und Pausenzeit (nur im Speicher der App; den Verlauf über Tage zeigt das Dashboard),
+- die Hashrate je Thread (z. B. um schwächere Effizienzkerne zu erkennen), Pool-Ping und angenommene bzw.
+  abgelehnte Stratum-Shares (nicht die Sidechain-Shares von P2Pool),
+- Stromquelle, Akkustand und Wärmezustand – und bei einer Pause den **Grund**: XMRig läuft mit
+  `--pause-on-battery` und pausiert, sobald macOS auf Akku läuft. Das passiert auch mit eingestecktem Netzteil,
+  wenn ein Ladelimit-Werkzeug wie AlDente den Akku bis zur unteren Grenze entladen lässt; die App erkennt
+  laufende Ladelimit-Apps und ein angeschlossenes Netzteil und nennt das. Hinweise gibt es außerdem bei
+  Energiesparmodus und Wärmedrosselung.
+
+Der Knopf *Dashboard* öffnet `http://<Pool-Host>:8090`; eine andere Adresse in `~/.config/moneta/dashboard`
+eintragen. Aktualisieren: `git pull`, dann `deploy/mac/install.sh` erneut ausführen (Einstellungen bleiben).
+
+Dasselbe im Terminal:
 
 ```bash
 MM="$HOME/Library/Application Support/Moneta/moneta-miner.sh"

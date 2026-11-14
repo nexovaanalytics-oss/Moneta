@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: EUPL-1.2
+# Baut die Menüleisten-App „Moneta Miner“ (deploy/mac/MonetaMiner) auf einem macOS-Runner – mit demselben
+# swiftc-Aufruf wie deploy/mac/install.sh. Nur ein Compile-Test; das Ergebnis wird nicht veröffentlicht.
+name: mac-app
+
+on:
+  push:
+    branches: [main]
+    paths: ["deploy/mac/MonetaMiner/**", ".github/workflows/mac-app.yml"]
+  pull_request:
+    paths: ["deploy/mac/MonetaMiner/**", ".github/workflows/mac-app.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Info.plist prüfen
+        run: plutil -lint deploy/mac/MonetaMiner/Info.plist
+      - name: Bauen (Xcode-Toolchain des Runners)
+        run: |
+          xcrun swiftc -O -swift-version 5 -parse-as-library \
+            -target "$(uname -m)-apple-macos13.0" \
+            -o "$RUNNER_TEMP/MonetaMiner" deploy/mac/MonetaMiner/MonetaMiner.swift
+      - name: Bauen nur mit den Command Line Tools (wie install.sh auf einem Mac ohne Xcode)
+        run: |
+          clt=/Library/Developer/CommandLineTools
+          if [ ! -x "$clt/usr/bin/swiftc" ]; then
+            echo "::notice::Command Line Tools fehlen auf dem Runner – Schritt übersprungen"
+            exit 0
+          fi
+          DEVELOPER_DIR="$clt" xcrun swiftc -O -swift-version 5 -parse-as-library \
+            -target "$(uname -m)-apple-macos13.0" \
+            -o "$RUNNER_TEMP/MonetaMiner-clt" deploy/mac/MonetaMiner/MonetaMiner.swift

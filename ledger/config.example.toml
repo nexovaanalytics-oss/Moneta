@@ -26,6 +26,11 @@ password = ""          # Pflicht – das Dashboard zeigt Finanzdaten
 # Optional: kostenloser CoinGecko-Demo-API-Key (höheres Abfragelimit). Leer lassen geht auch.
 coingecko_api_key = ""
 
+[node]
+# Eigener Monero-Node (eingeschränkter RPC) für Difficulty und Blockbelohnung auf der Seite „Auswertung“.
+# Im Compose-Stack ist der Standard richtig; leer ("") schaltet die Abfrage ab. Es geht nichts ins Internet.
+rpc_url = "http://monerod:18089/json_rpc"
+
 [power]
 poll_seconds = 60
 # Optionaler Mehrverbrauch der NAS durch Node + Pool (läuft rund um die Uhr). 0 = nicht ansetzen.

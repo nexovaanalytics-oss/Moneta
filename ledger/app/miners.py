@@ -16,11 +16,12 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 
+import activity
 import db
 from config import Config, Miner
 
 log = logging.getLogger("miners")
-NAS_DEVICE = "NAS (Node + Pool)"
+NAS_DEVICE = activity.NAS_DEVICE
 
 _live: dict[str, dict] = {}  # letzter Status je Gerät fürs Dashboard
 
@@ -90,6 +91,7 @@ def record(cfg: Config, device: str, ts: float, reachable: bool, mining: bool,
                  tariff_last = excluded.tariff_last""",
             (day, device, seconds if mining else 0, kwh, cost,
              hashrate if mining else 0.0, 1 if mining and hashrate > 0 else 0, watts, tariff))
+        activity.add_hourly(c, device, ts, reachable, mining, hashrate, seconds, watts, tariff)
         c.commit()
 
 

@@ -18,7 +18,7 @@
 | Port | Service | Reachable from |
 |---|---|---|
 | 18080/tcp | monerod P2P | Internet outbound; inbound only with port forwarding (optional) |
-| 18089/tcp | monerod restricted RPC | LAN (wallets, P2Pool, wallet-rpc) |
+| 18089/tcp | monerod restricted RPC | LAN (wallets, P2Pool, wallet-rpc, ledger) |
 | 18084/tcp | monerod ZMQ | Docker-internal only |
 | 3333/tcp | P2Pool Stratum | LAN (miners) |
 | 37888/tcp | P2Pool P2P (mini) | Internet outbound |
@@ -35,6 +35,8 @@ active, allow 3333, 8090 and, if needed, 18089 only for your own LAN subnet.
                  every 60 s                        every 120 s
 XMRig API (computers) ────▶ miners.py ──▶ power_daily / power_samples
                                          (mining time × watts × tariff, frozen at record time)
+                                         + activity_hourly (hourly values, analysis only)
+monerod (own node, hourly) ──▶ network.py ──▶ network_samples (difficulty, block reward)
 
 wallet-rpc ──────────────▶ walletsync.py ──▶ inflows  (coinbase = mining inflow, otherwise "other receipt")
                                                 │

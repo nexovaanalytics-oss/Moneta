@@ -78,6 +78,31 @@ MIGRATIONS: list[str] = [
         source TEXT NOT NULL
     );
     """,
+    # 3: Auswertung über beliebige Zeiträume (nur Anzeige, keine Steuergrundlage):
+    #    Stundenwerte je Gerät (Minutenwerte werden nach 30 Tagen gelöscht) und
+    #    Difficulty/Blockbelohnung vom eigenen Node für den rechnerischen Gegenwert
+    """
+    CREATE TABLE IF NOT EXISTS activity_hourly (
+        hour      INTEGER NOT NULL,   -- Unix-Zeit des Stundenbeginns
+        device    TEXT NOT NULL,
+        polls     INTEGER NOT NULL DEFAULT 0,
+        mining_s  INTEGER NOT NULL DEFAULT 0,
+        paused_s  INTEGER NOT NULL DEFAULT 0,   -- erreichbar, aber pausiert bzw. ohne Hashrate
+        offline_s INTEGER NOT NULL DEFAULT 0,   -- XMRig-API nicht erreichbar
+        hashes    REAL NOT NULL DEFAULT 0,      -- Hashrate x Intervall
+        hr_max    REAL NOT NULL DEFAULT 0,
+        kwh       REAL NOT NULL DEFAULT 0,
+        cost_eur  REAL NOT NULL DEFAULT 0,
+        PRIMARY KEY (hour, device)
+    );
+    CREATE TABLE IF NOT EXISTS network_samples (
+        height     INTEGER PRIMARY KEY,
+        ts         INTEGER NOT NULL,   -- Blockzeit
+        difficulty INTEGER NOT NULL,
+        reward     INTEGER NOT NULL    -- Blockbelohnung in Piconero (inkl. Gebühren)
+    );
+    CREATE INDEX IF NOT EXISTS idx_network_ts ON network_samples(ts);
+    """,
 ]
 
 _local = threading.local()

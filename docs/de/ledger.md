@@ -16,6 +16,7 @@ Enthält den **View-Key** – nicht weitergeben, nicht ins Repository.
 | `[wallet]` | `address` (4…), `view_key` (`viewkey` → secret), `restore_height` (Blockhöhe kurz vor Anlage der Wallet), `wallet_password` (frei) |
 | `[web]` | `port`, `user`, `password` (Pflicht) |
 | `[prices]` | `coingecko_api_key` (optional, kostenloser Demo-Key erhöht das Limit) |
+| `[node]` | `rpc_url` des eigenen Nodes für Difficulty und Blockbelohnung (Standard `http://monerod:18089/json_rpc`, leer = aus) |
 | `[power]` | `poll_seconds`, `nas_extra_watts` (0 = NAS nicht ansetzen), `[[power.tariff]]` mit `valid_from`, `ct_per_kwh` |
 | `[[miner]]` | je Rechner `name`, `url` (`http://IP:18000`), `token`, `watts` (Mehrverbrauch), `note` (Messung) |
 
@@ -36,6 +37,7 @@ Nach Änderungen: `sudo docker restart xmr-ledger`.
 | Übersicht | Bestand, steuerfrei veräußerbar, Einnahmen/Strom/Ergebnis des Jahres, Gerätestatus mit Gesamtzeile (Hashrate und Mehrverbrauch aller minenden Geräte, ggf. inkl. NAS), letzte Auszahlungen, Downloads |
 | Zuflüsse | alle Auszahlungen mit Kurs und Kursquelle; sonstige Zugänge separat |
 | Strom | Mining-Stunden, Ø Watt, kWh, Ø ct/kWh, Kosten je Gerät und Monat, dazu Summen über alle Geräte (Jahr und je Monat) |
+| Auswertung | frei wählbarer Zeitraum (Vorlagen: letzte Nacht, 24 h, 7/30 Tage, Monat, Jahr): je Gerät Zeit mint/pausiert/nicht erreichbar mit Zeitleiste, Ø/Max-Hashrate, Hashes, kWh, Kosten; rechnerischer Gegenwert (Hashes ÷ Difficulty × Blockbelohnung) gegen tatsächliche Auszahlungen; je Tag; CSV |
 | Lose | FIFO-Lose mit Anschaffungskosten und „steuerfrei ab“ |
 | Abgänge | Überweisungen aus der Mining-Wallet erfassen/löschen |
 | Verkaufs-Rechner | geplanten Verkauf/Tausch simulieren (nichts wird gespeichert) |
@@ -69,6 +71,8 @@ Kurshistorie alle 10 Minuten.
 | `walletsync.py` | wallet-rpc: Wallet anlegen/öffnen, Eingänge lesen, Reorgs bereinigen |
 | `prices.py` | 5-Minuten-Kurshistorie, Kurszuordnung, Tageskurs-Rückfall, manuelle Kurse |
 | `miners.py` | XMRig-API abfragen, Mining-Zeit und Kosten festschreiben |
+| `activity.py` | Stundenwerte je Gerät, Auswertung über Zeiträume |
+| `network.py` | Difficulty und Blockbelohnung vom eigenen Node |
 | `ledger.py` | Lose, FIFO, Fristen, Jahresübersicht, Verkaufs-Rechner |
 | `report.py` | Excel- und CSV-Export |
 | `web.py` | Dashboard, Formulare, Downloads, Auth, CSRF-Schutz |
@@ -78,6 +82,8 @@ Tests: `python -m pytest -q ledger/tests` (Fake-Wallet, Fake-XMRig, Fake-Kurse �
 
 ## Grenzen
 
+- Auswertung: Minutenwerte (mit Zeitleiste) bleiben 30 Tage, danach Stundenwerte. Hashes = gemeldete Hashrate ×
+  Abfrageintervall (Näherung); der Gegenwert berücksichtigt keine Uncles/Orphans. Reine Anzeige, keine Steuergrundlage.
 - CoinGecko (kostenlos, ohne Gewähr); historische Kurse über die freie API nur etwa ein Jahr zurück.
 - Mining-Zeit zählt nur, solange der Ledger läuft und den Mac erreicht (eher zu niedrige als zu hohe Kosten).
 - Netzwerkgebühren werden im Verkaufs-Rechner nicht abgezogen.

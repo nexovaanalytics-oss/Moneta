@@ -18,7 +18,7 @@
 | Port | Service | Accessible depuis |
 |---|---|---|
 | 18080/tcp | monerod P2P | Internet sortant ; entrant uniquement avec redirection de port (facultatif) |
-| 18089/tcp | monerod RPC restreint | LAN (portefeuilles, P2Pool, wallet-rpc) |
+| 18089/tcp | monerod RPC restreint | LAN (portefeuilles, P2Pool, wallet-rpc, ledger) |
 | 18084/tcp | monerod ZMQ | interne à Docker uniquement |
 | 3333/tcp | P2Pool Stratum | LAN (mineurs) |
 | 37888/tcp | P2Pool P2P (mini) | Internet sortant |
@@ -35,6 +35,8 @@ du NAS est actif, n'ouvrez 3333, 8090 et, si nécessaire, 18089 qu'à votre sous
                     toutes les 60 s                    toutes les 120 s
 API XMRig (ordinateurs) ──▶ miners.py ──▶ power_daily / power_samples
                                          (temps de minage × watts × tarif, figés à l'enregistrement)
+                                         + activity_hourly (valeurs horaires, analyse uniquement)
+monerod (propre nœud, toutes les heures) ──▶ network.py ──▶ network_samples (difficulté, récompense de bloc)
 
 wallet-rpc ──────────────▶ walletsync.py ──▶ inflows  (coinbase = entrée de minage, sinon « autre entrée »)
                                                 │

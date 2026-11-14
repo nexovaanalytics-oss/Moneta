@@ -12,8 +12,10 @@ import json
 import logging
 import time
 import urllib.request
+from decimal import Decimal
 
 import db
+import prices
 from config import Config
 
 log = logging.getLogger("network")
@@ -121,3 +123,25 @@ def loop(cfg: Config, stop) -> None:
             db.set_meta("network_error", str(e))
             log.warning("Node-Abfrage fehlgeschlagen: %s", e)
         stop.wait(SAMPLE_INTERVAL_S)
+
+
+def economics(cfg: Config, now: float | None = None) -> dict | None:
+    """Kennzahlen für die Thread-Wahl beim Einmessen (GET /api/moneta, nur Anzeige, nichts Steuerrelevantes).
+
+    Rechnerischer Ertrag je H/s und Tag = 86.400 / Difficulty x Blockbelohnung x Kurs, Stromkosten je Watt und
+    Tag = 0,024 kWh x Tarif. Grundlage: jüngster Wert vom eigenen Node, jüngster lokaler Kurs (höchstens
+    2 Stunden alt), aktueller Tarif aus der config.toml. Fehlt Node- oder Kurswert: None.
+    """
+    now = time.time() if now is None else now
+    row = db.get().execute("SELECT ts, difficulty, reward FROM network_samples ORDER BY ts DESC LIMIT 1").fetchone()
+    pt = prices.current_price_point(cfg)
+    if row is None or pt is None or not row["difficulty"]:
+        return None
+    price, price_ts = pt
+    reward_xmr = Decimal(int(row["reward"])) / Decimal(10 ** 12)
+    eur_per_hs_day = Decimal(86400) / Decimal(int(row["difficulty"])) * reward_xmr * price
+    ct = Decimal(str(cfg.tariff_at(now)))
+    eur_per_w_day = Decimal("0.024") * ct / Decimal(100)
+    return {"difficulty": int(row["difficulty"]), "reward_xmr": float(reward_xmr), "network_ts": int(row["ts"]),
+            "price_eur": float(price), "price_ts": int(price_ts), "ct_per_kwh": float(ct),
+            "eur_per_hs_day": float(eur_per_hs_day), "eur_per_w_day": float(eur_per_w_day)}

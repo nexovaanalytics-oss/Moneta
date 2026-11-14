@@ -2,14 +2,18 @@
 # SPDX-License-Identifier: EUPL-1.2
 # Misst für mehrere Thread-Zahlen Hashrate und Mehrverbrauch und schlägt Threads und Watt vor.
 #
-#   ./einmessen.sh            Kandidaten aus dem Geräteprofil (profil.sh)
+#   ./einmessen.sh            Stufenleiter über alle Kerne (siehe unten)
 #   ./einmessen.sh 3 4        bestimmte Thread-Zahlen
-#   WARMUP=300 WINDOW=300 ./einmessen.sh   Aufwärmen/Messen je Kandidat in Sekunden
+#   WARMUP=300 WINDOW=180 ./einmessen.sh   Aufwärmen/Messen je Stufe in Sekunden
 #
-# Ablauf: Leerlauf messen → je Kandidat XMRig gegen den eigenen P2Pool starten, aufwärmen (lüfterlose Macs
+# Stufenleiter (P = Performance-, E = Effizienz-Kerne): lüfterlos P−1, P, P+E/2, alle; mit Lüfter P, P+E/2,
+# alle (z. B. M4 mit 4 P + 6 E: 3, 4, 7, 10). Gemessen wird aufsteigend ohne Pause, es zählt der Dauerbetrieb.
+# Ablauf: Leerlauf messen → je Stufe XMRig gegen den eigenen P2Pool starten, aufwärmen (lüfterlose Macs
 # 5 Min., damit die Drosselung erfasst wird), dann Hashrate (XMRig-API) und Leistung (powermetrics) mitteln.
 # Mehrverbrauch = (Last − Leerlauf) × 1,1 (Netzteil), aufgerundet (RAM misst powermetrics nicht).
-# Vorschlag = beste Hashrate je Watt. Ergebnis: ~/.config/moneta/einmessung.json (Install/Kopplung nutzen es).
+# Vorschlag = Stufe mit dem höchsten Saldo aus rechnerischem Ertrag und Stromkosten (Kennzahlen vom Ledger:
+# Difficulty und Blockbelohnung vom eigenen Node, lokaler Kurs, Tarif). Ohne Ledger-Kennzahlen: beste Hashrate
+# je Watt (bei < 3 % Unterschied die höhere). Die ganze Tabelle wird angezeigt. Ergebnis: ~/.config/moneta/einmessung.json (Install/Kopplung nutzen es).
 #
 # Voraussetzungen: Netzteil angeschlossen, Mac während der Messung nicht benutzen, sudo (powermetrics).
 # Die Messung mint bereits über P2Pool; ein noch nicht freigegebener Rechner wird vom Ledger nicht erfasst.
@@ -39,27 +43,31 @@ pmset -g batt 2>/dev/null | grep -q "AC Power" || die "Bitte das Netzteil anschl
 profile="$("$DIR/profil.sh")"
 read -r ncpu pcores fanless < <(python3 -c 'import json,sys; p=json.loads(sys.argv[1]); c=p["cores"];
 print(c["total"], c["performance"] or c["total"], int(p["fanless"]))' "$profile")
+ecores=$(( ncpu - pcores ))
 
-if [ $# -gt 0 ]; then
-  candidates=("$@")
-elif [ "$fanless" = 1 ]; then
-  candidates=($(( pcores > 1 ? pcores - 1 : 1 )) "$pcores")
-else
-  candidates=("$ncpu" "$pcores")
-fi
-# doppelte entfernen, prüfen
-uniq=()
-for n in "${candidates[@]}"; do
+# Stufenleiter (Kandidaten) – aufsteigend, ohne doppelte, geprüft
+ladder() {
+  local half=$(( (ecores + 1) / 2 ))
+  if [ "$fanless" = 1 ]; then
+    echo $(( pcores > 1 ? pcores - 1 : 1 )) "$pcores" $(( pcores + half )) "$ncpu"
+  elif [ "$ecores" -gt 0 ]; then
+    echo "$pcores" $(( pcores + half )) "$ncpu"
+  else
+    echo $(( ncpu > 1 ? ncpu - 1 : 1 )) "$ncpu"
+  fi
+}
+if [ $# -gt 0 ]; then raw=("$@"); else read -r -a raw <<< "$(ladder)"; fi
+for n in "${raw[@]}"; do
   [[ "$n" =~ ^[0-9]+$ ]] && [ "$n" -ge 1 ] && [ "$n" -le "$ncpu" ] || die "Ungültige Thread-Zahl: $n (1–$ncpu)"
-  case " ${uniq[*]-} " in *" $n "*) ;; *) uniq+=("$n") ;; esac
 done
-candidates=("${uniq[@]}")
+read -r -a candidates <<< "$(printf '%s\n' "${raw[@]}" | sort -n -u | tr '\n' ' ')"
 
-if [ "$fanless" = 1 ]; then WARMUP="${WARMUP:-300}"; COOLDOWN="${COOLDOWN:-120}"; else WARMUP="${WARMUP:-60}"; COOLDOWN="${COOLDOWN:-60}"; fi
-WINDOW="${WINDOW:-180}"
+if [ "$fanless" = 1 ]; then WARMUP="${WARMUP:-300}"; else WARMUP="${WARMUP:-90}"; fi
+COOLDOWN="${COOLDOWN:-0}"   # aufsteigend messen: keine Pause nötig, gemessen wird der Dauerzustand
+WINDOW="${WINDOW:-120}"
 IDLE="${IDLE:-30}"
 total=$(( IDLE + ${SETTLE:-20} + ${#candidates[@]} * (WARMUP + WINDOW + COOLDOWN) ))
-say "Einmessen: Threads ${candidates[*]} – Dauer etwa $(( (total + 59) / 60 )) Minuten"
+say "Einmessen: Threads ${candidates[*]} von $ncpu ($pcores Performance, $ecores Effizienz) – Dauer etwa $(( (total + 59) / 60 )) Minuten"
 echo "  Pool $POOL, XMRig $("$XMRIG" --version 2>/dev/null | head -1 || echo "?")"
 echo "  Bitte den Mac währenddessen nicht benutzen (Leerlauf und Last werden mit powermetrics gemessen)."
 
@@ -124,7 +132,7 @@ v=[x for x in v[:1] if x]; print(v[0] if v and not d.get("paused") else "")' >> 
   [ -n "$load_w" ] && [ -n "$hr" ] || die "Keine Messwerte für $n Threads (Pool erreichbar? Log: $work/xmrig-$n.log)"
   printf '%s\t%s\t%s\n' "$n" "$hr" "$load_w" >> "$results"
   echo "  $n Threads: $hr H/s bei $load_w W"
-  if [ "$n" != "${candidates[${#candidates[@]}-1]}" ]; then
+  if [ "$COOLDOWN" -gt 0 ] && [ "$n" != "${candidates[${#candidates[@]}-1]}" ]; then
     echo "  abkühlen ${COOLDOWN} s …"
     sleep "$COOLDOWN"
   fi
@@ -132,37 +140,77 @@ done
 
 say "Ergebnis"
 mkdir -p "$CONF_DIR"
-python3 - "$idle_w" "$results" "$RESULT" "$ncpu" "$profile" <<'PY'
+# Ertrag und Stromkosten je Stufe: Kennzahlen vom eigenen Ledger (Difficulty vom Node, lokaler Kurs, Tarif)
+LEDGER="${LEDGER:-$( { [ -r "$CONF_DIR/ledger" ] && tr -d '[:space:]' < "$CONF_DIR/ledger"; } || true )}"
+discovery=""
+[ -n "$LEDGER" ] && discovery="$(curl -s -m 5 "$LEDGER/api/moneta" 2>/dev/null || true)"
+python3 - "$idle_w" "$results" "$RESULT" "$ncpu" "$profile" "$discovery" <<'PY'
 import json, math, sys, time
 idle, results, out, ncpu, profile = float(sys.argv[1]), sys.argv[2], sys.argv[3], int(sys.argv[4]), sys.argv[5]
+try:
+    eco = json.loads(sys.argv[6]).get("economics") if sys.argv[6] else None
+except ValueError:
+    eco = None
 rows = []
 for line in open(results):
     n, hr, load = line.split("\t")
     hr, load = float(hr), float(load)
     delta = max(load - idle, 0.1)
     extra = math.ceil(delta * 1.1)               # +10 % Netzteil, aufgerundet (RAM)
-    rows.append({"threads": int(n), "hashrate": round(hr), "load_w": round(load, 2), "delta_w": round(delta, 2),
-                 "extra_w": extra, "h_per_w": round(hr / extra, 1)})
-best = max(r["h_per_w"] for r in rows)
-# beste Effizienz; bei < 3 % Unterschied die höhere Hashrate
-choice = max((r for r in rows if r["h_per_w"] >= best * 0.97), key=lambda r: r["hashrate"])
+    r = {"threads": int(n), "hashrate": round(hr), "load_w": round(load, 2), "delta_w": round(delta, 2),
+         "extra_w": extra, "h_per_w": round(hr / extra, 1)}
+    if eco:
+        r["eur_day"] = round(hr * eco["eur_per_hs_day"], 4)        # rechnerischer Ertrag je Tag
+        r["cost_day"] = round(extra * eco["eur_per_w_day"], 4)     # Stromkosten je Tag
+        r["net_day"] = round(r["eur_day"] - r["cost_day"], 4)
+    rows.append(r)
+rows.sort(key=lambda r: r["threads"])
+if eco:
+    # Grenznutzen: die Stufe mit dem höchsten Saldo – jede weitere Stufe bringt dann weniger Mehrertrag als
+    # Mehrstrom kostet. Bei gleichem Saldo (± 0,1 ct/Tag) die mit weniger Watt.
+    top = max(r["net_day"] for r in rows)
+    choice = min((r for r in rows if r["net_day"] >= top - 0.001), key=lambda r: r["extra_w"])
+    criterion = "höchster Saldo aus Ertrag und Strom"
+else:
+    best = max(r["h_per_w"] for r in rows)
+    # beste Effizienz; bei < 3 % Unterschied die höhere Hashrate
+    choice = max((r for r in rows if r["h_per_w"] >= best * 0.97), key=lambda r: r["hashrate"])
+    criterion = "beste Hashrate je Watt (keine Kennzahlen vom Ledger)"
 day = time.strftime("%d.%m.%Y")
-de = lambda x: f"{x:.1f}".replace(".", ",")
+de = lambda x, d=1: f"{x:.{d}f}".replace(".", ",")
 hs = f"{choice['hashrate']:,}".replace(",", ".")
 note = (f"Einmessung {day} (einmessen.sh, powermetrics): {de(choice['load_w'])} W Last bei {choice['threads']} "
         f"Threads ({hs} H/s) − {de(idle)} W Leerlauf = {de(choice['delta_w'])} W; "
         f"+10 % Netzteil, aufgerundet wegen RAM")
 threads = "all" if choice["threads"] == ncpu else str(choice["threads"])
-res = {"date": time.strftime("%Y-%m-%d %H:%M"), "idle_w": idle, "candidates": rows,
-       "choice": {"threads": threads, "watts": float(choice["extra_w"]), "note": note},
+res = {"date": time.strftime("%Y-%m-%d %H:%M"), "idle_w": idle, "candidates": rows, "economics": eco,
+       "choice": {"threads": threads, "watts": float(choice["extra_w"]), "note": note, "criterion": criterion},
        "profile": json.loads(profile)}
 with open(out, "w") as f:
     json.dump(res, f, ensure_ascii=False, indent=1)
-print("  Threads  Hashrate   Last W  Mehr W   H/W")
+
+head = "  Threads  Hashrate   Mehr W    H/W"
+if eco:
+    head += "   Ertrag €/Tag  Strom €/Tag  Saldo €/Tag  Δ Saldo"
+print(head)
+prev = None
 for r in rows:
-    mark = "  ← Vorschlag" if r is choice else ""
-    print(f"  {r['threads']:>7}  {r['hashrate']:>6} H/s {r['load_w']:>7.1f} {r['extra_w']:>6}  {r['h_per_w']:>6.1f}{mark}")
-print(f"\n  Vorschlag: Threads {threads}, Mehrverbrauch {choice['extra_w']} W")
+    line = f"  {r['threads']:>7}  {r['hashrate']:>6} H/s {r['extra_w']:>6}  {r['h_per_w']:>6.1f}"
+    if eco:
+        d = f"{de(r['net_day'] - prev['net_day'], 3):>8}" if prev else f"{'–':>8}"
+        line += f"   {de(r['eur_day'], 3):>12}  {de(r['cost_day'], 3):>11}  {de(r['net_day'], 3):>11}  {d}"
+    print(line + ("  ← Vorschlag" if r is choice else ""))
+    prev = r
+if eco:
+    t = lambda ts: time.strftime("%d.%m. %H:%M", time.localtime(ts))
+    diff = f"{eco['difficulty']:,}".replace(",", ".")
+    print(f"\n  Grundlage: Difficulty {diff} (eigener Node, {t(eco['network_ts'])}), Blockbelohnung "
+          f"{de(eco['reward_xmr'], 4)} XMR, Kurs {de(eco['price_eur'], 2)} € ({t(eco['price_ts'])}), "
+          f"Tarif {de(eco['ct_per_kwh'], 2)} ct/kWh")
+    if max(r["net_day"] for r in rows) < 0:
+        print("  Hinweis: Bei diesen Werten liegt jede Stufe im Minus; vorgeschlagen ist die mit dem geringsten.")
+print(f"\n  Vorschlag: Threads {threads} von {ncpu}, Mehrverbrauch {choice['extra_w']} W – {criterion}.")
+print("  Jede andere Stufe kannst du im Installer wählen.")
 print(f"  Notiz: {note}")
 PY
 chmod 600 "$RESULT"

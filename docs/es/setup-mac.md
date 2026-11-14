@@ -74,14 +74,23 @@ cat ~/.config/moneta/xmrig-token            # va como token en el config.toml de
 ## 3. Medir hashrate y consumo adicional
 
 **Automáticamente:** `deploy/mac/einmessen.sh` (lo ofrece el instalador; después también en
-`~/Library/Application Support/Moneta/einmessen.sh`) mide el consumo en reposo y, para dos números de hilos – sin
-ventilador: núcleos de rendimiento − 1 y todos los núcleos de rendimiento; con ventilador: todos los núcleos y los
-núcleos de rendimiento –, el hashrate y la potencia, siempre tras un calentamiento (5 min sin ventilador, para
-captar la limitación térmica). La propuesta es el mejor hashrate por vatio; consumo adicional = (carga − reposo) ×
-1,1, redondeado hacia arriba, con una nota lista. Dura ≈ 10 min con ventilador y ≈ 25 min sin él; conecta el
-cargador, no uses el Mac mientras tanto, `sudo` para `powermetrics`. Candidatos propios: `einmessen.sh 3 4`. La
-medición ya mina a través de P2Pool. El emparejamiento envía el resultado (`~/.config/moneta/einmessung.json`)
-como propuesta.
+`~/Library/Application Support/Moneta/einmessen.sh`) mide el consumo en reposo y, por escalones hasta todos los
+núcleos, el hashrate y la potencia – sin ventilador: núcleos de rendimiento − 1, todos los núcleos de rendimiento,
+más la mitad de los núcleos de eficiencia y todos los núcleos (M4 con 4 + 6 núcleos: 3, 4, 7, 10); con
+ventilador: núcleos de rendimiento, la mitad de los de eficiencia y todos. Los escalones se miden en orden
+ascendente tras un calentamiento (5 min sin ventilador, para captar la limitación térmica). Consumo adicional =
+(carga − reposo) × 1,1, redondeado hacia arriba, con una nota lista.
+
+La propuesta es el escalón con el mejor saldo entre rendimiento calculado y coste eléctrico por día: rendimiento =
+hashrate × 86 400 ÷ dificultad × recompensa de bloque × cotización, electricidad = consumo adicional × 24 h ×
+tarifa. Los valores vienen de tu propio ledger (dificultad del nodo, cotización local, tarifa de `config.toml`);
+un escalón más solo compensa si su rendimiento adicional supera la electricidad adicional. Sin valores del ledger
+se usa el mejor hashrate por vatio. La tabla muestra todos los escalones y en el instalador se puede elegir
+cualquiera. El cálculo orienta la elección de hilos; no es una magnitud fiscal.
+
+Dura ≈ 10 min con ventilador y ≈ 30 min sin él; conecta el cargador, no uses el Mac mientras tanto, `sudo` para
+`powermetrics`. Escalones propios: `einmessen.sh 3 4 6`. La medición ya mina a través de P2Pool. El
+emparejamiento envía el resultado (`~/.config/moneta/einmessung.json`) como propuesta.
 
 **A mano:**
 

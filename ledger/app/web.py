@@ -19,6 +19,7 @@ import db
 import devices
 import ledger
 import miners
+import network
 import prices
 import report
 import version
@@ -967,7 +968,15 @@ def discovery() -> dict:
     """Antwort auf GET /api/moneta: nur, was ein neuer Rechner zum Verbinden braucht – nichts Sensibles."""
     return {"service": "moneta-ledger", "api": 1, "version": version.VERSION,
             "stratum": {"host": CFG.stratum_host or None, "port": CFG.stratum_port},
-            "pairing": CFG.pairing}
+            "pairing": CFG.pairing, "economics": _economics()}
+
+
+def _economics() -> dict | None:
+    try:
+        return network.economics(CFG)
+    except Exception as e:  # Discovery darf daran nie scheitern
+        log.warning("Kennzahlen für /api/moneta nicht verfügbar: %s", e)
+        return None
 
 
 def serve(cfg: Config, stop) -> ThreadingHTTPServer:

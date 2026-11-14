@@ -124,6 +124,19 @@ watts = 15.0
     disc = json.loads(body)
     assert st == 200 and disc["service"] == "moneta-ledger" and disc["stratum"] == {"host": None, "port": 3334}
     assert disc["pairing"] is True and "geheim" not in body.decode() and "f" * 64 not in body.decode()
+    assert disc["economics"] is None  # noch kein Node-Wert und kein Kurs
+
+    # Kennzahlen für einmessen.sh: Difficulty/Belohnung vom Node + lokaler Kurs + Tarif
+    now = int(time.time())
+    with db.write_lock:
+        db.get().execute("INSERT INTO network_samples(height, ts, difficulty, reward) VALUES(?,?,?,?)",
+                         (3_900_000, now - 600, 432_000_000_000, 600_000_000_000))
+        db.get().execute("INSERT INTO price_points(ts, eur, source) VALUES(?,?,?)", (now - 300, "300.00", "test"))
+        db.get().commit()
+    eco = json.loads(http("/api/moneta")[1])["economics"]
+    # 86.400 / 4,32e11 x 0,6 XMR x 300 € = 3,6e-5 € je H/s und Tag; 0,024 kWh x 0,30 € = 0,0072 € je W und Tag
+    assert abs(eco["eur_per_hs_day"] - 3.6e-5) < 1e-12 and abs(eco["eur_per_w_day"] - 0.0072) < 1e-12
+    assert eco["ct_per_kwh"] == 30.0 and eco["price_eur"] == 300.0 and eco["difficulty"] == 432_000_000_000
 
     pair_req = {"code": "000000", "name": "MacBook Air", "url": "http://192.168.1.20:18000",
                 "token": "devtoken123", "threads": "3",

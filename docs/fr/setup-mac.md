@@ -75,14 +75,24 @@ cat ~/.config/moneta/xmrig-token            # à reporter comme token dans le co
 ## 3. Mesurer le hashrate et la surconsommation
 
 **Automatiquement :** `deploy/mac/einmessen.sh` (proposé par l'installateur, ensuite aussi dans
-`~/Library/Application Support/Moneta/einmessen.sh`) mesure la consommation au repos puis, pour deux nombres de
-threads – sans ventilateur : cœurs performance − 1 et tous les cœurs performance ; avec ventilateur : tous les
-cœurs et les cœurs performance –, le hashrate et la puissance, chaque fois après une phase de chauffe (5 min sans
-ventilateur, pour saisir le bridage). La proposition est le meilleur hashrate par watt ; surconsommation =
-(charge − repos) × 1,1, arrondie vers le haut, avec une note prête à l'emploi. Durée ≈ 10 min avec ventilateur,
-≈ 25 min sans ; brancher l'alimentation, ne pas utiliser le Mac pendant ce temps, `sudo` pour `powermetrics`.
-Vos propres candidats : `einmessen.sh 3 4`. La mesure mine déjà via P2Pool. L'appairage transmet le résultat
-(`~/.config/moneta/einmessung.json`) comme proposition.
+`~/Library/Application Support/Moneta/einmessen.sh`) mesure la consommation au repos puis, par paliers jusqu'à
+tous les cœurs, le hashrate et la puissance – sans ventilateur : cœurs performance − 1, tous les cœurs
+performance, plus la moitié des cœurs efficacité et tous les cœurs (M4 à 4 + 6 cœurs : 3, 4, 7, 10) ; avec
+ventilateur : cœurs performance, moitié des cœurs efficacité et tous. Les paliers sont mesurés dans l'ordre
+croissant après une phase de chauffe (5 min sans ventilateur, pour saisir le bridage). Surconsommation =
+(charge − repos) × 1,1, arrondie vers le haut, avec une note prête à l'emploi.
+
+La proposition est le palier au meilleur solde entre rendement calculé et coût d'électricité par jour : rendement =
+hashrate × 86 400 ÷ difficulté × récompense de bloc × cours, électricité = surconsommation × 24 h × tarif. Les
+valeurs viennent de votre propre ledger (difficulté du nœud, cours local, tarif de `config.toml`) ; un palier
+supplémentaire n'est rentable que si son rendement supplémentaire dépasse l'électricité supplémentaire. Sans
+valeurs du ledger, c'est le meilleur hashrate par watt qui compte. Le tableau montre tous les paliers et
+l'installateur permet d'en choisir n'importe lequel. Ce calcul oriente le choix des threads ; ce n'est pas une
+grandeur fiscale.
+
+Durée ≈ 10 min avec ventilateur, ≈ 30 min sans ; brancher l'alimentation, ne pas utiliser le Mac pendant ce temps,
+`sudo` pour `powermetrics`. Vos propres paliers : `einmessen.sh 3 4 6`. La mesure mine déjà via P2Pool.
+L'appairage transmet le résultat (`~/.config/moneta/einmessung.json`) comme proposition.
 
 **À la main :**
 

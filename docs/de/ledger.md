@@ -47,7 +47,10 @@ Nach Änderungen: `sudo docker restart xmr-ledger`.
 `/health` antwortet ohne Passwort mit `ok` (Docker-Healthcheck).
 
 `/api/moneta` antwortet ebenfalls ohne Passwort, aber nur mit Dienstname, Version, Stratum-Adresse und ob
-Kopplung möglich ist – daran erkennen neue Rechner den Ledger im Heimnetz. `/api/pair` (Kopplungscode) und
+Kopplung möglich ist – daran erkennen neue Rechner den Ledger im Heimnetz. Dazu kommen unter `economics` die
+Kennzahlen für die Thread-Wahl beim Einmessen: Difficulty und Blockbelohnung vom eigenen Node, der jüngste lokale
+Kurs (höchstens 2 Stunden alt) und der aktuelle Tarif, daraus Ertrag je H/s und Stromkosten je Watt und Tag
+(`null`, solange Node-Wert oder Kurs fehlen). `/api/pair` (Kopplungscode) und
 `/api/heartbeat` (Geräte-Token) nehmen nur JSON von Rechnern an, siehe [Rechner koppeln](#rechner-koppeln).
 
 **Aktualisierung:** Die Übersicht holt bei geöffnetem Tab alle 30 s neue Werte, ohne die Seite neu zu laden

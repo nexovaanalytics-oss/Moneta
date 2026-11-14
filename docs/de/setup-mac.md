@@ -73,12 +73,21 @@ cat ~/.config/moneta/xmrig-token            # gehört als token in die config.to
 ## 3. Hashrate und Mehrverbrauch messen
 
 **Automatisch:** `deploy/mac/einmessen.sh` (vom Installer angeboten, danach auch unter
-`~/Library/Application Support/Moneta/einmessen.sh`) misst den Leerlauf und für zwei Thread-Zahlen – lüfterlos
-Performance-Kerne − 1 und alle Performance-Kerne, mit Lüfter alle Kerne und die Performance-Kerne – Hashrate und
-Leistung, jeweils nach dem Aufwärmen (lüfterlos 5 Min., damit die Drosselung erfasst wird). Vorschlag ist die
-beste Hashrate je Watt; Mehrverbrauch = (Last − Leerlauf) × 1,1, aufgerundet, mit fertiger Notiz. Dauer mit
-Lüfter ≈ 10 Min., lüfterlos ≈ 25 Min.; Netzteil anschließen, Mac währenddessen nicht benutzen, `sudo` für
-`powermetrics`. Eigene Kandidaten: `einmessen.sh 3 4`. Die Messung mint bereits über P2Pool. Das Ergebnis
+`~/Library/Application Support/Moneta/einmessen.sh`) misst den Leerlauf und dann stufenweise bis zu allen Kernen
+Hashrate und Leistung – lüfterlos Performance-Kerne − 1, alle Performance-Kerne, dazu die Hälfte der
+Effizienz-Kerne und alle Kerne (M4 mit 4 + 6 Kernen: 3, 4, 7, 10), mit Lüfter Performance-Kerne, halbe
+Effizienz-Kerne und alle. Gemessen wird aufsteigend nach dem Aufwärmen (lüfterlos 5 Min., damit die Drosselung
+erfasst wird). Mehrverbrauch = (Last − Leerlauf) × 1,1, aufgerundet, mit fertiger Notiz.
+
+Vorschlag ist die Stufe mit dem höchsten Saldo aus rechnerischem Ertrag und Stromkosten je Tag: Ertrag =
+Hashrate × 86.400 ÷ Difficulty × Blockbelohnung × Kurs, Strom = Mehrverbrauch × 24 h × Tarif. Die Kennzahlen
+kommen vom eigenen Ledger (Difficulty vom Node, lokaler Kurs, Tarif aus der `config.toml`); eine weitere Stufe
+lohnt sich nur, wenn ihr Mehrertrag den Mehrstrom übersteigt. Ohne Ledger-Kennzahlen gilt die beste Hashrate je
+Watt. Die Tabelle zeigt alle Stufen; im Installer lässt sich jede wählen. Die Rechnung ist eine Orientierung für
+die Thread-Wahl, keine steuerliche Größe.
+
+Dauer mit Lüfter ≈ 10 Min., lüfterlos ≈ 30 Min.; Netzteil anschließen, Mac währenddessen nicht benutzen, `sudo`
+für `powermetrics`. Eigene Stufen: `einmessen.sh 3 4 6`. Die Messung mint bereits über P2Pool. Das Ergebnis
 (`~/.config/moneta/einmessung.json`) schickt die Kopplung als Vorschlag mit.
 
 **Von Hand:**

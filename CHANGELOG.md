@@ -5,6 +5,11 @@ Contributors: add user-facing changes under "Unreleased".
 
 ## Unreleased
 
+**ledger**
+- `GET /api/moneta` additionally returns `economics`: difficulty and block reward from your own node, the latest
+  local price, the current tariff, and from these the calculated revenue per H/s and electricity cost per watt and
+  day – for the thread choice in `einmessen.sh` (design decision D-11). `null` while node value or price is missing.
+
 **deploy/nas**
 - New `deploy/nas/update-ledger.sh`: deploys a ledger release on the NAS in one step – asks GitHub for the latest
   `ledger-vX.Y.Z` (or takes a given version), asks for confirmation, pulls the image first, backs up the database
@@ -12,6 +17,11 @@ Contributors: add user-facing changes under "Unreleased".
   and `ledger` and prints the log and rollback steps. `--check` only compares versions. The version stays pinned.
 
 **deploy/mac**
+- `einmessen.sh` measures a ladder of steps up to all cores instead of two thread counts (e.g. M4 with 4 + 6 cores:
+  3, 4, 7, 10; ascending, no cool-down) and suggests the step with the highest balance of calculated revenue and
+  electricity cost, using the figures from the ledger; without them, the best hashrate per watt. The table shows
+  every step with revenue, electricity and balance per day. The installer shows "n of N threads" with the reason
+  and uses a fresh measurement as the default instead of the old setting.
 - Fix: `moneta-miner.sh status` failed without output while XMRig was stopped (launchd agent not loaded), so the
   menu bar app showed "moneta-miner.sh nicht gefunden – install.sh ausführen". The app now also clears a status
   error as soon as the next status query succeeds.

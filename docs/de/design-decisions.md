@@ -5,6 +5,16 @@
 Warum Moneta so gebaut ist. Neue Einträge oben anfügen (Datum, Kontext, Entscheidung, Folgen).
 Diese deutsche Fassung ist die Referenz; Übersetzungen bitte mitziehen.
 
+### D-11 · 14.11.2026 – Thread-Wahl nach Grenznutzen statt Faustregel
+Die Faustregel „lüfterlos: Performance-Kerne − 1“ stammt von einem M1 und ignoriert Effizienz-Kerne; beim M4
+(4 + 6 Kerne) blieben so sechs Kerne ungeprüft. `einmessen.sh` misst deshalb eine Stufenleiter bis zu allen Kernen
+und schlägt die Stufe mit dem höchsten Saldo aus rechnerischem Ertrag und Stromkosten vor. Die Kennzahlen liefert
+der Ledger unter `economics` in `GET /api/moneta` aus Daten, die er ohnehin hat (Difficulty vom eigenen Node,
+lokaler Kurs, Tarif) – ohne Anfrage ins Internet und ohne Bezug zu einzelnen Auszahlungen. Kurs und Tarif sind im
+LAN damit ohne Passwort lesbar; das ist für die Thread-Wahl nötig, weil ein neuer Rechner vor der Kopplung kein
+Token hat. Ohne Kennzahlen gilt weiter die beste Hashrate je Watt. Die Rechnung dient nur der Thread-Wahl und wird
+nicht gespeichert.
+
 ### D-10 · 14.11.2026 – Neue Rechner per Code koppeln, Freigabe im Dashboard
 Neue Rechner sollen ohne Handarbeit in der `config.toml` dazukommen. Der Ledger ist dafür die Leitstelle: Er
 antwortet ohne Passwort auf `GET /api/moneta` (nur Dienst, Version, Stratum-Adresse), damit Installer und App ihn

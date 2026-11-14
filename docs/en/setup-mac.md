@@ -73,13 +73,22 @@ cat ~/.config/moneta/xmrig-token            # goes into the ledger's config.toml
 ## 3. Measure hashrate and extra power draw
 
 **Automatically:** `deploy/mac/einmessen.sh` (offered by the installer, afterwards also at
-`~/Library/Application Support/Moneta/einmessen.sh`) measures idle power and, for two thread counts – fanless:
-performance cores − 1 and all performance cores; with a fan: all cores and the performance cores – hashrate and
-power, each after a warm-up (fanless 5 min so that throttling is captured). The suggestion is the best hashrate
-per watt; extra power draw = (load − idle) × 1.1, rounded up, with a ready-made note. Takes ≈ 10 min with a fan,
-≈ 25 min fanless; connect the power adapter, do not use the Mac meanwhile, `sudo` for `powermetrics`. Your own
-candidates: `einmessen.sh 3 4`. The measurement already mines via P2Pool. Pairing sends the result
-(`~/.config/moneta/einmessung.json`) along as a suggestion.
+`~/Library/Application Support/Moneta/einmessen.sh`) measures idle power and then hashrate and power in steps up
+to all cores – fanless: performance cores − 1, all performance cores, plus half of the efficiency cores and all
+cores (M4 with 4 + 6 cores: 3, 4, 7, 10); with a fan: performance cores, half of the efficiency cores and all.
+Steps run in ascending order after a warm-up (fanless 5 min so that throttling is captured). Extra power draw =
+(load − idle) × 1.1, rounded up, with a ready-made note.
+
+The suggestion is the step with the highest balance of calculated revenue and electricity cost per day: revenue =
+hashrate × 86,400 ÷ difficulty × block reward × price, electricity = extra power × 24 h × tariff. The figures
+come from your own ledger (difficulty from the node, local price, tariff from `config.toml`); a further step only
+pays if its extra revenue exceeds its extra electricity. Without figures from the ledger, the best hashrate per
+watt is used. The table shows every step and the installer lets you pick any of them. The calculation guides the
+thread choice; it is not a tax figure.
+
+Takes ≈ 10 min with a fan, ≈ 30 min fanless; connect the power adapter, do not use the Mac meanwhile, `sudo` for
+`powermetrics`. Your own steps: `einmessen.sh 3 4 6`. The measurement already mines via P2Pool. Pairing sends the
+result (`~/.config/moneta/einmessung.json`) along as a suggestion.
 
 **By hand:**
 

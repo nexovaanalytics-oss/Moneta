@@ -5,6 +5,15 @@
 Why Moneta is built the way it is. Add new entries at the top (date, context, decision, consequences).
 The [German version](../de/design-decisions.md) is the reference.
 
+### D-12 · 19.11.2026 – Attribute payouts to computers: own P2Pool log instead of external services
+With several computers it is unclear which one „caused“ a payout. Under PPLNS a payout is split across all own
+shares in the window; which computer found a share is only recorded in your own P2Pool's log (client address,
+optionally the login name). The ledger therefore mounts the P2Pool volume read-only and reads the log
+incrementally. Public services such as p2pool.observer are ruled out: they know nothing about computers, and every
+query would link the mining address to your IP. Without the log the split is estimated by hash share and labelled
+as such. The attribution is display only; inflows, prices and report stay unchanged, and for tax purposes the
+whole payout counts.
+
 ### D-11 · 14.11.2026 – Choose threads by marginal benefit instead of a rule of thumb
 The rule of thumb "fanless: performance cores − 1" comes from an M1 and ignores efficiency cores; on an M4
 (4 + 6 cores) six cores went untested. `einmessen.sh` therefore measures a ladder of steps up to all cores and

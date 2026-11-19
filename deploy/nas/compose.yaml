@@ -69,6 +69,7 @@ services:
       - wallet-rpc
     volumes:
       - ./ledger/data:/data
+      - p2pool-data:/p2pool:ro   # nur lesend: p2pool.log für „Auszahlung → Rechner“
     ports:
       - "8090:8090"     # Dashboard: http://<NAS-IP>:8090
 

@@ -38,6 +38,11 @@ stratum_host = ""
 stratum_port = 3333
 # Kopplung neuer Rechner per Code aus dem Dashboard (Seite „Geräte“). false schaltet /api/pair ab.
 pairing = true
+# Auszahlung → Rechner: Der Ledger liest das P2Pool-Log nur lesend (Compose: p2pool-data:/p2pool:ro) und ordnet
+# jede Auszahlung den eigenen Shares im PPLNS-Fenster zu. Nur Anzeige, ändert keine Zuflüsse oder Kurse.
+log = "/p2pool/p2pool.log"
+# Sidechain von P2Pool: mini (Fenster ≈ 6 h), nano (≈ 18 h) oder main. Muss zum P2Pool-Start passen (--mini).
+sidechain = "mini"
 
 [power]
 poll_seconds = 60

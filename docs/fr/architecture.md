@@ -37,6 +37,7 @@ API XMRig (ordinateurs) ──▶ miners.py ──▶ power_daily / power_sample
                                          (temps de minage × watts × tarif, figés à l'enregistrement)
                                          + activity_hourly (valeurs horaires, analyse uniquement)
 monerod (propre nœud, toutes les heures) ──▶ network.py ──▶ network_samples (difficulté, récompense de bloc)
+Journal P2Pool (lecture seule, toutes les 60 s) ──▶ shares.py ──▶ p2pool_shares, p2pool_payouts (paiement → ordinateur, affichage)
 
 Ordinateurs (appairage) ──▶ /api/pair, /api/heartbeat ──▶ devices, device_watts (validation et watts dans le tableau de bord)
 
@@ -61,7 +62,8 @@ Tableau de bord (sorties saisies à la main) ──▶ disposals ──▶ ledge
     └── wallets/          # fichier du portefeuille en lecture seule, recréable à tout moment depuis la view key
 ```
 
-La blockchain et les données P2Pool se trouvent dans des volumes Docker (`bitmonero`, `p2pool-data`).
+La blockchain et les données P2Pool se trouvent dans des volumes Docker (`bitmonero`, `p2pool-data`) ; le ledger
+monte `p2pool-data` en lecture seule pour lire `p2pool.log`.
 
 ## Remarque sur l'hébergement
 

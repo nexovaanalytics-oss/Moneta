@@ -49,6 +49,9 @@ class Config:
     stratum_host: str = ""
     stratum_port: int = 3333
     pairing: bool = True          # Kopplung neuer Rechner über einen Code aus dem Dashboard
+    # P2Pool-Log (nur lesend eingebunden) für die Zuordnung von Auszahlungen zu Rechnern; leer = aus
+    p2pool_log: str = "/p2pool/p2pool.log"
+    sidechain: str = "mini"       # mini, nano oder main – bestimmt die Länge des PPLNS-Fensters
     # Strom
     poll_seconds: int = 60
     nas_extra_watts: float = 0.0
@@ -128,6 +131,8 @@ def load(path: str) -> Config:
         stratum_host=str(pool.get("stratum_host", "")),
         stratum_port=int(pool.get("stratum_port", 3333)),
         pairing=bool(pool.get("pairing", True)),
+        p2pool_log=str(pool.get("log", "/p2pool/p2pool.log")),
+        sidechain=str(pool.get("sidechain", "mini")).lower(),
         poll_seconds=int(pw.get("poll_seconds", 60)),
         nas_extra_watts=float(pw.get("nas_extra_watts", 0.0)),
         nas_note=str(pw.get("nas_note", "")),

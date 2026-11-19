@@ -5,7 +5,21 @@ Contributors: add user-facing changes under "Unreleased".
 
 ## Unreleased
 
+**ledger**
+- Payout → computer: the ledger reads the P2Pool log read-only and incrementally (`[pool] log`, default
+  `/p2pool/p2pool.log`; `sidechain` = `mini`/`nano`/`main` sets the PPLNS window) and stores your own shares with
+  client address and login name. Each payout is split across the shares in its PPLNS window by share difficulty
+  and mapped to devices via `[[miner]]`/paired computers (a login matching a device name wins over the IP).
+  Labelled „exakt“, „teilweise“ (log starts inside the window) or „geschätzt“ (no log: split by hash share from
+  the hourly values). Shown under **Zuflüsse** (column „Verursacht von“, table „Je Rechner“) and **Auswertung**
+  (timeline „Shares und Auszahlungen“, columns „Shares“ and „zugeordnet XMR“). Display only – inflows, prices,
+  report and tax data are unchanged. Past payouts are attributed as far back as `p2pool.log` reaches. No external
+  services are queried (design decision D-12).
+- DB schema v5 (additive: `p2pool_shares`, `p2pool_payouts`).
+
 **deploy/nas**
+- `compose.yaml`: the `ledger` service mounts `p2pool-data:/p2pool:ro` (for the P2Pool log). Replace
+  `compose.yaml` on the NAS when updating and run `docker compose up -d`; without it, payouts are only estimated.
 - New `deploy/nas/update-ledger.sh`: deploys a ledger release on the NAS in one step – asks GitHub for the latest
   `ledger-vX.Y.Z` (or takes a given version), asks for confirmation, pulls the image first, backs up the database
   inside the running container (SQLite backup incl. WAL), sets `LEDGER_VERSION` in `.env`, restarts `wallet-rpc`

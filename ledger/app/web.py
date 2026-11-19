@@ -22,6 +22,7 @@ import miners
 import network
 import prices
 import report
+import shares
 import version
 from config import Config
 
@@ -292,19 +293,39 @@ def _ov_pending() -> str:
 def p_inflows(q) -> str:
     year = int(q.get("jahr", [datetime.now(CFG.tz).year])[0])
     rows = ledger.inflows_in_year(CFG, year)
+    attr = shares.attribute(CFG, rows)
+    for x in rows:
+        x["price_eur"] = None if x["price"] is None else str(x["price"])
+    per_dev = shares.by_device(rows, attr)
+    col = shares.colors(CFG, extra=list(per_dev))
     tr = "".join(
         f"<tr><td>{x['dt'].strftime('%d.%m.%Y %H:%M:%S')}</td><td class='n'>{x['height']}</td>"
         f"<td class='mono'>{esc(x['txid'])}</td><td class='n'>{xmrf(x['amount'], 12)}</td>"
         f"<td class='n'>{eurf(x['price'])}</td><td class='n'>{eurf(None if x['value'] is None else ledger.eur(x['value']))}</td>"
-        f"<td class='mut'>{esc(x['source']) or '<span class=bad>Kurs fehlt</span>'}</td></tr>" for x in rows)
+        f"<td class='mut'>{esc(x['source']) or '<span class=bad>Kurs fehlt</span>'}</td>"
+        f"<td>{_cause_cell(attr.get(x['txid']), col)}</td></tr>" for x in rows)
+    dev_rows = "".join(
+        f"<tr><td><span style='display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;"
+        f"background:{col.get(dev, shares.UNKNOWN_COLOR)}'></span>{esc(dev)}</td><td class='n'>{d['payouts']}</td>"
+        f"<td class='n'>{xmrf(d['pico'], 8)}</td><td class='n'>{xmrf(d['exact'], 8)}</td><td class='n'>{eurf(d['eur'])}</td></tr>"
+        for dev, d in sorted(per_dev.items(), key=lambda kv: -kv[1]["pico"]))
+    dev_table = ""
+    if dev_rows:
+        dev_table = (f"<h2>Je Rechner {year}</h2>{_log_note(rows[0]['ts'] - shares.window_s(CFG))}"
+                     f"<table><tr><th>Rechner</th><th class='n'>beteiligt an</th><th class='n'>zugeordnet XMR</th>"
+                     f"<th class='n'>davon exakt</th><th class='n'>Gegenwert</th></tr>{dev_rows}</table>"
+                     f"<p class='mut' style='font-size:12.5px'>Nur Anzeige: Aufteilung der Auszahlungen nach den eigenen "
+                     f"Shares im PPLNS-Fenster (P2Pool-Log), sonst nach Hash-Anteil. Gegenwert = Anteil × gespeicherter "
+                     f"Kurs der Auszahlung, je Anteil auf Cent gerundet. Steuerlich zählt weiter die ganze Auszahlung "
+                     f"(Tabelle oben, Bericht).</p>")
     other = ledger.inflows_in_year(CFG, year, kind="in")
     tr2 = "".join(
         f"<tr><td>{x['dt'].strftime('%d.%m.%Y %H:%M')}</td><td class='n'>{x['height']}</td>"
         f"<td class='mono'>{esc(x['txid'])}</td><td class='n'>{xmrf(x['amount'], 12)}</td></tr>" for x in other)
     body = (f"<h1>Zuflüsse {year_select('/zufluesse', year)}</h1>"
             f"<table><tr><th>Zeitpunkt</th><th class='n'>Block</th><th>TXID</th><th class='n'>XMR</th>"
-            f"<th class='n'>Kurs EUR</th><th class='n'>Wert EUR</th><th>Kursquelle</th></tr>"
-            f"{tr or '<tr><td colspan=7 class=mut>Keine Zuflüsse</td></tr>'}</table>"
+            f"<th class='n'>Kurs EUR</th><th class='n'>Wert EUR</th><th>Kursquelle</th><th>Verursacht von</th></tr>"
+            f"{tr or '<tr><td colspan=8 class=mut>Keine Zuflüsse</td></tr>'}</table>{dev_table}"
             f"<h2>Sonstige Zugänge (kein Mining, nicht als Einnahme gezählt)</h2>"
             f"<p class='mut'>Die Nur-Lesen-Wallet sieht auch Rückgeld eigener Überweisungen. Solche Eingänge stehen hier.</p>"
             f"<table><tr><th>Zeitpunkt</th><th class='n'>Block</th><th>TXID</th><th class='n'>XMR</th></tr>"
@@ -353,6 +374,128 @@ def p_power(q) -> str:
     return page("/strom", "Strom", body)
 
 
+# ---------- Auszahlung → Rechner ----------
+METHOD_PILL = {"exakt": "ok", "teilweise": "warn", "geschätzt": "mut", "offen": "mut"}
+METHOD_HINT = {
+    "exakt": "aus den eigenen Shares im PPLNS-Fenster laut P2Pool-Log, nach Difficulty",
+    "teilweise": "aus den Shares laut P2Pool-Log; das Log beginnt erst innerhalb des Fensters",
+    "geschätzt": "nach dem Hash-Anteil der Rechner im Fenster (keine eigene Share im Log)",
+    "offen": "keine Share im Log und keine Hashes im Fenster",
+}
+
+
+def _parts_text(parts: dict) -> str:
+    total = sum(parts.values()) or 1
+    return " · ".join(f"{dev} {de(100 * p / total, 0)} %" for dev, p in parts.items())
+
+
+def _cause_cell(res: dict | None, col: dict) -> str:
+    """Zelle „Verursacht von“: Anteile als Balken (Farbe je Rechner) + Text + Methode."""
+    if not res or not res["parts"]:
+        return f"<span class='pill mut' title='{esc(METHOD_HINT['offen'])}'>offen</span>"
+    m = res["method"]
+    segs = "".join(
+        f"<span title='{esc(dev)}' style='flex:{p} 0 0;background:{col.get(dev, shares.UNKNOWN_COLOR)}'></span>"
+        for dev, p in res["parts"].items())
+    return (f"<div style='display:flex;gap:2px;width:120px;height:10px;border-radius:4px;overflow:hidden;"
+            f"margin:3px 0;background:#fff'>{segs}</div>{esc(_parts_text(res['parts']))} "
+            f"<span class='pill {METHOD_PILL[m]}' title='{esc(METHOD_HINT[m])}'>{m}</span>")
+
+
+def _ticks(s: int, e: int) -> list[tuple[int, str]]:
+    span = e - s
+    step = next((st for st in (3600, 3 * 3600, 6 * 3600, 12 * 3600, 86400, 2 * 86400, 7 * 86400, 14 * 86400)
+                 if span / st <= 8), 30 * 86400)
+    t = datetime.fromtimestamp(s, CFG.tz).replace(hour=0, minute=0, second=0, microsecond=0)
+    out = []
+    while t.timestamp() <= e and len(out) < 40:
+        ts = int(t.timestamp())
+        if ts >= s:
+            out.append((ts, t.strftime("%d.%m." if step >= 86400 or (t.hour == 0 and t.minute == 0) else "%H:%M")))
+        t += timedelta(seconds=step)
+    return out
+
+
+def _share_chart(s: int, e: int, payouts: list[dict], attr: dict, sh: list[dict], lanes: list[str],
+                 col: dict) -> str:
+    """SVG: eine Spur je Rechner mit seinen Shares (Rauten), darunter die Auszahlungen (Kreise); Linien
+    verbinden jede Auszahlung mit den Shares in ihrem PPLNS-Fenster. Hover zeigt das Fenster."""
+    W, L, R, LH, top = 1000, 170, 985, 30, 6
+    span = max(e - s, 1)
+
+    def x(t):
+        return L + (min(max(t, s), e) - s) / span * (R - L)
+
+    rows = {dev: top + i * LH + LH // 2 for i, dev in enumerate(lanes)}
+    yp = top + len(lanes) * LH + LH // 2
+    yb = top + (len(lanes) + 1) * LH
+    H = yb + 24
+    o = [f"<svg viewBox='0 0 {W} {H}' width='100%' role='img' aria-label='Shares und Auszahlungen je Rechner' "
+         f"style='display:block;min-width:640px;font:12px -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif'>"
+         "<style>.pay .win{opacity:0;pointer-events:none}.pay:hover .win{opacity:.55}.pay line{opacity:.5}"
+         ".pay:hover line{opacity:1;stroke-width:2.5}</style>"]
+    for t, label in _ticks(s, e):
+        xx = x(t)
+        o.append(f"<line x1='{xx:.1f}' x2='{xx:.1f}' y1='{top}' y2='{yb}' stroke='#e4e7ec'/>"
+                 f"<text x='{xx:.1f}' y='{yb + 16}' text-anchor='middle' fill='#667085'>{label}</text>")
+    for dev, y in list(rows.items()) + [("Auszahlungen", yp)]:
+        o.append(f"<rect x='{L}' y='{y - 12}' width='{R - L}' height='24' rx='4' fill='#f6f7f9' opacity='.8'/>")
+        lx = 8
+        if dev in rows:
+            o.append(f"<rect x='8' y='{y - 5}' width='10' height='10' rx='2' fill='{col.get(dev, shares.UNKNOWN_COLOR)}'/>")
+            lx = 24
+        name = dev if len(dev) <= 20 else dev[:19] + "…"
+        o.append(f"<text x='{lx}' y='{y + 4}' fill='#1d2430'>{esc(name)}<title>{esc(dev)}</title></text>")
+    for p in payouts:
+        res = attr.get(p["txid"])
+        if not res:
+            continue
+        xp = x(res["ts"])
+        a0, a1 = res["window"]
+        g = [f"<g class='pay'><rect class='win' x='{x(a0):.1f}' y='{top}' width='{max(x(a1) - x(a0), 1):.1f}' "
+             f"height='{yb - top}' fill='#d0d5dd'/>"]
+        for sh_ in res["shares"]:
+            if sh_["device"] in rows:
+                g.append(f"<line x1='{xp:.1f}' y1='{yp}' x2='{x(sh_['ts']):.1f}' y2='{rows[sh_['device']]}' "
+                         f"stroke='{col.get(sh_['device'], shares.UNKNOWN_COLOR)}' stroke-width='1.5'/>")
+        filled = res["method"] in ("exakt", "teilweise")
+        tip = (f"Auszahlung {tsfmt(res['ts'])} · Block {p['height']} · {xmrf(p['amount'], 8)} XMR · "
+               f"{_parts_text(res['parts']) or 'nicht zuordenbar'} ({res['method']})")
+        g.append(f"<circle cx='{xp:.1f}' cy='{yp}' r='12' fill='transparent'/>"
+                 f"<circle cx='{xp:.1f}' cy='{yp}' r='6' fill='{'#1d2430' if filled else '#fff'}' stroke='#1d2430' "
+                 f"stroke-width='2'/><title>{esc(tip)}</title></g>")
+        o.append("".join(g))
+    for sh_ in sh:
+        y = rows.get(sh_["device"])
+        if y is None:
+            continue
+        xx, r = x(sh_["ts"]), 7
+        worker = f" ({sh_['worker']})" if sh_["worker"] and sh_["worker"] != "x" else ""
+        tip = (f"Share {tsfmt(sh_['ts'])} · {sh_['device']} · Diff {de(sh_['difficulty'] / 1e6, 0)} Mio. · "
+               f"Effort {de(sh_['effort'] or 0, 0)} % · {sh_['client']}{worker}")
+        faded = " opacity='.45'" if sh_["ts"] < s else ""
+        o.append(f"<g{faded}><circle cx='{xx:.1f}' cy='{y}' r='11' fill='transparent'/>"
+                 f"<polygon points='{xx:.1f},{y - r} {xx + r:.1f},{y} {xx:.1f},{y + r} {xx - r:.1f},{y}' "
+                 f"fill='{col.get(sh_['device'], shares.UNKNOWN_COLOR)}' stroke='#fff' stroke-width='2'/>"
+                 f"<title>{esc(tip)}</title></g>")
+    o.append("</svg>")
+    return "".join(o)
+
+
+def _log_note(s_ts: int) -> str:
+    state, since = shares.log_state()
+    if state == "unreadable":
+        return ("<p class='note'>P2Pool-Log eingebunden, aber nicht lesbar (Dateirechte) – Auszahlungen werden nur "
+                "nach Hash-Anteil zugeordnet („geschätzt“).</p>")
+    if state != "ok":
+        return ("<p class='note'>P2Pool-Log nicht eingebunden – Auszahlungen werden nur nach Hash-Anteil "
+                "zugeordnet („geschätzt“). Einbinden: im Compose-Stack beim Dienst <span class='mono'>ledger</span> "
+                "das Volume <span class='mono'>p2pool-data:/p2pool:ro</span> ergänzen (siehe Doku „Ledger“).</p>")
+    if since and since > s_ts:
+        return f"<p class='mut'>Das P2Pool-Log beginnt am {tsfmt(since)}; davor nur geschätzt.</p>"
+    return ""
+
+
 # ---------- Auswertung ----------
 STATE_COLOR = {"mint": "var(--ok)", "pausiert": "#f5b971", "nicht erreichbar": "#d0d5dd"}
 
@@ -393,6 +536,20 @@ def p_analysis(q) -> str:
     a = activity.analyse(CFG, start, end)
     s_, e_ = a["start"], a["end"]
     span = (e_ - s_).total_seconds()
+    s_ts, e_ts = int(s_.timestamp()), int(e_.timestamp())
+    attr = shares.attribute(CFG, a["payouts"])
+    sh = shares.shares_between(CFG, s_ts - shares.window_s(CFG), e_ts)   # inkl. Fenster vor dem Beginn
+    share_n: dict[str, int] = {}
+    for x_ in sh:
+        if x_["ts"] > s_ts:
+            share_n[x_["device"]] = share_n.get(x_["device"], 0) + 1
+    attributed = shares.by_device(a["payouts"], attr)
+    col = shares.colors(CFG, extra=[*a["devices"], *share_n, *attributed])
+
+    def own(dev) -> str:
+        n = share_n.get(dev, 0)
+        x_ = attributed.get(dev)
+        return f"<td class='n'>{n}</td><td class='n'>{xmrf(x_['pico'], 8) if x_ else '–'}</td>"
     t = a["total"]
     fmt = "%Y-%m-%dT%H:%M"
 
@@ -427,13 +584,17 @@ def p_analysis(q) -> str:
         polled = d["mining_s"] + d["paused_s"] + d["offline_s"]
         if dev == activity.NAS_DEVICE:
             rows += (f"<tr><td>{esc(dev)}</td><td colspan=6 class='mut'>Pauschale für Node + Pool</td>"
-                     f"<td class='n'>{de(d['kwh'], 3)}</td><td class='n'>{eurf(d['cost'])}</td><td></td></tr>")
+                     f"<td class='n'>{de(d['kwh'], 3)}</td><td class='n'>{eurf(d['cost'])}</td><td></td>"
+                     f"<td></td><td></td></tr>")
             continue
         rows += (f"<tr><td>{esc(dev)}</td><td class='n'>{_hm(d['mining_s'])} {_pct(d['mining_s'], polled)}</td>"
                  f"<td class='n'>{_hm(d['paused_s'])}</td><td class='n'>{_hm(d['offline_s'])}</td>"
                  f"<td class='n'>{de(d['hr_avg'], 0)}</td><td class='n'>{de(d['hr_max'], 0)}</td>"
                  f"<td class='n'>{de(d['hashes'] / 1e6, 1)}</td><td class='n'>{de(d['kwh'], 3)}</td>"
-                 f"<td class='n'>{eurf(d['cost'])}</td><td class='n'>{de(d['exp_xmr'], 8)}</td></tr>")
+                 f"<td class='n'>{eurf(d['cost'])}</td><td class='n'>{de(d['exp_xmr'], 8)}</td>{own(dev)}</tr>")
+    for dev in [*share_n, *attributed]:
+        if dev not in a["devices"] and f"<td>{esc(dev)}</td>" not in rows:
+            rows += f"<tr><td>{esc(dev)}</td><td colspan=8 class='mut'>keine Erfassung im Zeitraum</td><td></td>{own(dev)}</tr>"
     sum_style = "style='font-weight:600;background:#f0f2f5'"
     polled = t["mining_s"] + t["paused_s"] + t["offline_s"]
     if a["devices"]:
@@ -441,14 +602,17 @@ def p_analysis(q) -> str:
                  f"<td class='n'>{_hm(t['paused_s'])}</td><td class='n'>{_hm(t['offline_s'])}</td>"
                  f"<td class='n' title='zusammen, über den ganzen Zeitraum'>{de(t['hr_eff'], 0)}*</td><td class='n'>–</td>"
                  f"<td class='n'>{de(t['hashes'] / 1e6, 1)}</td><td class='n'>{de(t['kwh'], 3)}</td>"
-                 f"<td class='n'>{eurf(t['cost'])}</td><td class='n'>{de(t['exp_xmr'], 8)}</td></tr>")
+                 f"<td class='n'>{eurf(t['cost'])}</td><td class='n'>{de(t['exp_xmr'], 8)}</td>"
+                 f"<td class='n'>{sum(share_n.values())}</td>"
+                 f"<td class='n'>{xmrf(sum(x_['pico'] for x_ in attributed.values()), 8) if attributed else '–'}</td></tr>")
     table = (f"<h2>Je Gerät</h2><div style='overflow-x:auto'><table><tr><th>Gerät</th><th class='n'>mint</th><th class='n'>pausiert</th>"
              f"<th class='n'>nicht erreichbar</th><th class='n'>Ø H/s</th><th class='n'>max H/s</th>"
              f"<th class='n'>Hashes (Mio.)</th><th class='n'>kWh</th><th class='n'>Kosten</th>"
-             f"<th class='n'>erwartet XMR</th></tr>"
-             f"{rows or '<tr><td colspan=10 class=mut>Keine Daten im Zeitraum</td></tr>'}</table></div>"
+             f"<th class='n'>erwartet XMR</th><th class='n'>Shares</th><th class='n'>zugeordnet XMR</th></tr>"
+             f"{rows or '<tr><td colspan=12 class=mut>Keine Daten im Zeitraum</td></tr>'}</table></div>"
              f"<p class='mut' style='font-size:12.5px'>Ø H/s je Gerät: während es mint. * Gesamt: alle Rechner "
-             f"zusammen, gemittelt über den ganzen Zeitraum.</p>")
+             f"zusammen, gemittelt über den ganzen Zeitraum. Shares = eigene Sidechain-Shares laut P2Pool-Log; "
+             f"zugeordnet = Anteil an den Auszahlungen im Zeitraum (siehe unten).</p>")
 
     timeline = ""
     if a["segments"]:
@@ -479,6 +643,18 @@ def p_analysis(q) -> str:
         timeline += (f"<p class='mut' style='font-size:12.5px'>{s_.strftime('%d.%m. %H:%M')} bis "
                      f"{e_.strftime('%d.%m. %H:%M')}</p>")
 
+    lanes = [d for d in col if d in share_n or d in attributed
+             or (d in a["devices"] and a["devices"][d]["mining_s"] > 0)]
+    lanes += [d for d in {x_["device"] for x_ in sh} if d not in lanes]
+    share_html = ""
+    if lanes or a["payouts"]:
+        share_html = (f"<h2>Shares und Auszahlungen</h2>{_log_note(s_ts)}"
+                      f"<p class='mut' style='font-size:13px'>◆ eigene Share (Farbe = Rechner) · ● Auszahlung, exakt "
+                      f"zugeordnet · ○ geschätzt · Linien verbinden jede Auszahlung mit den Shares in ihrem PPLNS-Fenster "
+                      f"(≈ {de(shares.window_s(CFG) / 3600, 0)} h); Maus über eine Auszahlung zeigt das Fenster.</p>"
+                      f"<div style='overflow-x:auto;background:#fff;border:1px solid var(--line);border-radius:10px;"
+                      f"padding:8px'>{_share_chart(s_ts, e_ts, a['payouts'], attr, sh, lanes, col)}</div>")
+
     days_html = ""
     if span > 36 * 3600 and a["days"]:
         per_day: dict[str, dict] = {}
@@ -506,11 +682,12 @@ def p_analysis(q) -> str:
 
     pay = "".join(
         f"<tr><td>{datetime.fromtimestamp(p['ts'], CFG.tz).strftime('%d.%m.%Y %H:%M')}</td><td class='n'>{p['height']}</td>"
-        f"<td class='n'>{xmrf(p['amount'], 8)}</td><td class='n'>{eurf(None if not p['price_eur'] else Decimal(p['price_eur']))}</td></tr>"
+        f"<td class='n'>{xmrf(p['amount'], 8)}</td><td class='n'>{eurf(None if not p['price_eur'] else Decimal(p['price_eur']))}</td>"
+        f"<td>{_cause_cell(attr.get(p['txid']), col)}</td></tr>"
         for p in a["payouts"])
     payouts = (f"<h2>Auszahlungen im Zeitraum</h2><table><tr><th>Zeit</th><th class='n'>Block</th>"
-               f"<th class='n'>XMR</th><th class='n'>Kurs</th></tr>"
-               f"{pay or '<tr><td colspan=4 class=mut>keine</td></tr>'}</table>")
+               f"<th class='n'>XMR</th><th class='n'>Kurs</th><th>Verursacht von</th></tr>"
+               f"{pay or '<tr><td colspan=5 class=mut>keine</td></tr>'}</table>")
 
     nerr = db.get_meta("network_error") or ""
     net_note = (f'<span class="pill bad">Node-Fehler</span> <span class="mut">{esc(nerr)}</span> ' if nerr else "")
@@ -529,7 +706,7 @@ def p_analysis(q) -> str:
 
     body = (f"<h1>Auswertung</h1><p>{presets}</p>{form}"
             f"<p class='mut'>{s_.strftime('%d.%m.%Y %H:%M')} bis {e_.strftime('%d.%m.%Y %H:%M')}</p>"
-            f"{cards}{table}{timeline}{days_html}{payouts}{net}")
+            f"{cards}{table}{timeline}{share_html}{days_html}{payouts}{net}")
     return page("/auswertung", "Auswertung", body)
 
 

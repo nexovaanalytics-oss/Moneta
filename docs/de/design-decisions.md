@@ -5,6 +5,15 @@
 Warum Moneta so gebaut ist. Neue Einträge oben anfügen (Datum, Kontext, Entscheidung, Folgen).
 Diese deutsche Fassung ist die Referenz; Übersetzungen bitte mitziehen.
 
+### D-12 · 19.11.2026 – Auszahlungen den Rechnern zuordnen: eigenes P2Pool-Log statt externer Dienste
+Bei mehreren Rechnern ist offen, welcher eine Auszahlung „verursacht“ hat. Nach PPLNS verteilt sich eine
+Auszahlung auf alle eigenen Shares im Fenster; welcher Rechner eine Share gefunden hat, steht nur im Log des eigenen
+P2Pool (Client-Adresse, optional Login-Name). Der Ledger bindet das P2Pool-Volume deshalb nur lesend ein und liest
+das Log fortlaufend. Öffentliche Dienste wie p2pool.observer scheiden aus: Sie kennen keine Rechner, und jede
+Abfrage verknüpfte die Mining-Adresse mit der eigenen IP. Fehlt das Log, wird nach Hash-Anteil geschätzt und das
+so gekennzeichnet. Die Zuordnung ist reine Anzeige; Zuflüsse, Kurse und Bericht bleiben unverändert, steuerlich
+zählt die ganze Auszahlung.
+
 ### D-11 · 14.11.2026 – Thread-Wahl nach Grenznutzen statt Faustregel
 Die Faustregel „lüfterlos: Performance-Kerne − 1“ stammt von einem M1 und ignoriert Effizienz-Kerne; beim M4
 (4 + 6 Kerne) blieben so sechs Kerne ungeprüft. `einmessen.sh` misst deshalb eine Stufenleiter bis zu allen Kernen

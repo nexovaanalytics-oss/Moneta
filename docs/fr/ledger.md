@@ -21,7 +21,7 @@ commentaires en allemand). Il contient la **clé de visualisation** – ne la pa
 | `[web]` | `port`, `user`, `password` (obligatoire) |
 | `[prices]` | `coingecko_api_key` (facultatif ; une clé démo gratuite relève la limite de requêtes) |
 | `[node]` | `rpc_url` de votre propre nœud pour la difficulté et la récompense de bloc (par défaut `http://monerod:18089/json_rpc`, vide = désactivé) |
-| `[pool]` | pour les nouveaux ordinateurs : `stratum_host` (vide = IP du NAS), `stratum_port` (3333 par défaut) ; `pairing` (`true` par défaut) autorise l'appairage par code |
+| `[pool]` | pour les nouveaux ordinateurs : `stratum_host` (vide = IP du NAS), `stratum_port` (3333 par défaut) ; `pairing` (`true` par défaut) autorise l'appairage par code ; `log` (journal P2Pool, par défaut `/p2pool/p2pool.log`) et `sidechain` (`mini`, `nano`, `main`) pour [Paiement → ordinateur](#paiement--ordinateur) |
 | `[power]` | `poll_seconds`, `nas_extra_watts` (0 = ne pas compter le NAS), `[[power.tariff]]` avec `valid_from`, `ct_per_kwh` |
 | `[[miner]]` | facultatif, à la place de l'appairage dans le tableau de bord, par ordinateur : `name`, `url` (`http://IP:18000`), `token`, `watts` (surconsommation), `note` (mesure) |
 
@@ -40,9 +40,9 @@ Après une modification : `sudo docker restart xmr-ledger`.
 | Page | Contenu |
 |---|---|
 | **Übersicht** (vue d'ensemble) | Avoirs, montant cessible en franchise d'impôt, revenus/électricité/résultat de l'année, état des appareils avec ligne de total (hashrate et surconsommation de tous les appareils en minage, NAS compris si défini), derniers paiements, téléchargements |
-| **Zuflüsse** (entrées) | Tous les paiements avec cours et source du cours ; autres entrées listées à part |
+| **Zuflüsse** (entrées) | Tous les paiements avec cours, source du cours et « Verursacht von » (part par ordinateur), tableau « Je Rechner » pour l'année ; autres entrées listées à part |
 | **Strom** (électricité) | Heures de minage, watts moyens, kWh, ct/kWh moyens, coût par appareil et par mois, plus totaux pour tous les appareils (année et par mois) |
-| **Auswertung** (analyse) | Période au choix (préréglages : dernière nuit, 24 h, 7/30 jours, mois, année) : par appareil, temps en minage/en pause/injoignable avec frise chronologique, hashrate moyen/max., hashes, kWh, coût ; valeur attendue (hashes ÷ difficulté × récompense de bloc) face aux paiements réels ; par jour ; CSV |
+| **Auswertung** (analyse) | Période au choix (préréglages : dernière nuit, 24 h, 7/30 jours, mois, année) : par appareil, temps en minage/en pause/injoignable avec frise chronologique, hashrate moyen/max., hashes, kWh, coût, shares et XMR attribués ; valeur attendue (hashes ÷ difficulté × récompense de bloc) face aux paiements réels ; frise « Shares und Auszahlungen » avec « Verursacht von » ; par jour ; CSV |
 | **Lose** (lots) | Lots FIFO avec coût d'acquisition et date **steuerfrei ab** (exonéré à partir du) |
 | **Abgänge** (sorties) | Saisir/supprimer les transferts sortant du portefeuille de minage |
 | **Verkaufs-Rechner** (calculateur de vente) | Simuler une vente/un échange prévu (rien n'est enregistré) |
@@ -87,6 +87,41 @@ Les ordinateurs appairés se signalent avec leur jeton via `POST /api/heartbeat`
 Les ordinateurs de `[[miner]]` continuent de fonctionner sans changement (toute modification y nécessite
 toujours un redémarrage du conteneur).
 
+## Paiement → ordinateur
+
+P2Pool paie selon PPLNS : un paiement se répartit sur toutes les shares de la fenêtre des 2160 derniers blocs de
+la sidechain (mini ≈ 6 h, nano ≈ 18 h), pondérées par leur difficulté. Pour chaque paiement, le ledger indique donc
+quels ordinateurs y ont participé et pour quelle part – sous **Zuflüsse** (« Verursacht von », tableau
+« Je Rechner ») et sous **Auswertung** (frise « Shares und Auszahlungen », colonnes « Shares » et
+« zugeordnet XMR »).
+
+- **exakt** (exact) : à partir du journal P2Pool. Chaque share propre y figure avec heure, difficulté et adresse du
+  client (`SHARE FOUND: … client <IP:port>[, user <nom>]`), chaque paiement avec la hauteur du bloc. Le ledger lit
+  le journal en continu toutes les 60 s (tables `p2pool_shares`, `p2pool_payouts`). L'IP du client est associée à
+  un appareil via `[[miner]]` et les ordinateurs appairés ; si le login XMRig (`-u <nom>`) correspond à un nom
+  d'appareil, il est prioritaire et résiste aux changements d'IP. Les adresses inconnues apparaissent comme
+  « unbekannt ».
+- **teilweise** (partiel) : le journal ne commence qu'à l'intérieur de la fenêtre de ce paiement.
+- **geschätzt** (estimé) : aucune share issue du journal (journal absent ou commençant plus tard) – répartition
+  selon la part de hashes des valeurs horaires de l'analyse.
+
+**Activer :** le service `ledger` reçoit le volume P2Pool en lecture seule (`deploy/nas/compose.yaml`) :
+
+```yaml
+    volumes:
+      - ./ledger/data:/data
+      - p2pool-data:/p2pool:ro
+```
+
+Remplacer ensuite `compose.yaml` sur le NAS et lancer `sudo docker compose -p monero-pool up -d`. Sans ce volume,
+tout fonctionne comme avant, seulement « geschätzt ». **Historique :** P2Pool ne fait pas lui-même la rotation de
+son journal ; tant que `p2pool.log` n'a pas été supprimé, le ledger lit tout l'historique au premier démarrage et
+attribue aussi exactement les paiements plus anciens.
+
+Affichage uniquement : entrées, cours, rapport et traitement fiscal restent inchangés ; fiscalement, c'est toujours
+le paiement entier qui compte. Aucun service externe comme p2pool.observer n'est interrogé, car cela relierait
+l'adresse de minage à votre IP.
+
 ## Utilisation
 
 - **Sorties :** un portefeuille en lecture seule ne voit pas les transferts sortants. Saisissez chaque transfert :
@@ -113,6 +148,7 @@ toujours un redémarrage du conteneur).
 | `miners.py` | Interroger l'API XMRig, enregistrer le temps de minage et les coûts |
 | `devices.py` | Ordinateurs appairés : code d'appairage, inscription, validation, historique des watts, heartbeat |
 | `activity.py` | Valeurs horaires par appareil, analyse sur des périodes |
+| `shares.py` | Lire le journal P2Pool, attribuer les paiements aux ordinateurs (affichage uniquement) |
 | `network.py` | Difficulté et récompense de bloc depuis votre propre nœud |
 | `ledger.py` | Lots, FIFO, délais, synthèse annuelle, calculateur de vente |
 | `report.py` | Export Excel et CSV |
@@ -126,6 +162,9 @@ Tests : `python -m pytest -q ledger/tests` (faux portefeuille, faux XMRig, faux 
 - Analyse : les valeurs à la minute (avec frise) sont conservées 30 jours, ensuite des valeurs horaires. Hashes =
   hashrate annoncé × intervalle d'interrogation (approximation) ; la valeur attendue ignore les uncles/orphelins.
   Affichage uniquement, pas une base fiscale.
+- Paiement → ordinateur : la fenêtre est temporelle (2160 × temps de bloc) et n'est donc qu'une approximation de
+  la fenêtre PPLNS ; les uncles sont ignorés. Si P2Pool voit une adresse interne à Docker au lieu de l'IP de
+  l'ordinateur, un login XMRig portant le nom de l'appareil aide.
 - CoinGecko (gratuit, sans garantie) ; via l'API gratuite, les cours historiques ne remontent qu'à environ un an.
 - Le temps de minage n'est compté que tant que le ledger tourne et joint l'ordinateur (coûts plutôt sous-estimés
   que surestimés).

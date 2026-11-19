@@ -5,6 +5,15 @@
 Por qué Moneta está construido así. Añadir las nuevas entradas arriba (fecha, contexto, decisión,
 consecuencias). La [versión alemana](../de/design-decisions.md) es la de referencia.
 
+### D-12 · 19.11.2026 – Atribuir pagos a los equipos: log propio de P2Pool en lugar de servicios externos
+Con varios equipos no está claro cuál «causó» un pago. Según PPLNS, un pago se reparte entre todas las shares
+propias de la ventana; qué equipo encontró una share solo consta en el log de tu propio P2Pool (dirección del
+cliente y, opcionalmente, el nombre de login). Por eso el ledger monta el volumen de P2Pool en solo lectura y lee
+el log de forma continua. Se descartan servicios públicos como p2pool.observer: no conocen los equipos, y cada
+consulta vincularía la dirección de minería con tu IP. Sin log, el reparto se estima según la parte de hashes y se
+marca como tal. La atribución es solo visualización; entradas, cotizaciones e informe no cambian, y a efectos
+fiscales cuenta el pago completo.
+
 ### D-11 · 14.11.2026 – Elegir los hilos por utilidad marginal en lugar de una regla general
 La regla «sin ventilador: núcleos de rendimiento − 1» procede de un M1 e ignora los núcleos de eficiencia; en un M4
 (4 + 6 núcleos) quedaban seis núcleos sin probar. Por eso `einmessen.sh` mide escalones hasta todos los núcleos y

@@ -37,6 +37,7 @@ XMRig-API (Rechner) ──────▶ miners.py ──▶ power_daily / powe
                                          (Mining-Zeit × Watt × Tarif, festgeschrieben)
                                          + activity_hourly (Stundenwerte, nur Auswertung)
 monerod (eigener Node, stündlich) ──▶ network.py ──▶ network_samples (Difficulty, Blockbelohnung)
+P2Pool-Log (nur lesend, alle 60 s) ──▶ shares.py ──▶ p2pool_shares, p2pool_payouts (Auszahlung → Rechner, Anzeige)
 
 Rechner (Kopplung) ──▶ /api/pair, /api/heartbeat ──▶ devices, device_watts (Freigabe und Watt im Dashboard)
 
@@ -61,7 +62,8 @@ Dashboard (Abgänge von Hand) ──▶ disposals ──▶ ledger.py: Lose, FIF
     └── wallets/          # Nur-Lesen-Wallet-Datei, jederzeit aus dem View-Key neu erzeugbar
 ```
 
-Blockchain und P2Pool-Daten liegen in Docker-Volumes (`bitmonero`, `p2pool-data`).
+Blockchain und P2Pool-Daten liegen in Docker-Volumes (`bitmonero`, `p2pool-data`); der Ledger bindet
+`p2pool-data` nur lesend ein, um `p2pool.log` zu lesen.
 
 ## Hinweis zum Hosting
 

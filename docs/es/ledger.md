@@ -21,7 +21,7 @@ comentarios en alemán). Contiene la **clave de visualización**: no la comparta
 | `[web]` | `port`, `user`, `password` (obligatorio) |
 | `[prices]` | `coingecko_api_key` (opcional; una clave demo gratuita eleva el límite de consultas) |
 | `[node]` | `rpc_url` de tu propio nodo para dificultad y recompensa de bloque (por defecto `http://monerod:18089/json_rpc`, vacío = desactivado) |
-| `[pool]` | para equipos nuevos: `stratum_host` (vacío = IP del NAS), `stratum_port` (por defecto 3333); `pairing` (por defecto `true`) permite el emparejamiento con código |
+| `[pool]` | para equipos nuevos: `stratum_host` (vacío = IP del NAS), `stratum_port` (por defecto 3333); `pairing` (por defecto `true`) permite el emparejamiento con código; `log` (log de P2Pool, por defecto `/p2pool/p2pool.log`) y `sidechain` (`mini`, `nano`, `main`) para [Pago → equipo](#pago--equipo) |
 | `[power]` | `poll_seconds`, `nas_extra_watts` (0 = no contabilizar el NAS), `[[power.tariff]]` con `valid_from`, `ct_per_kwh` |
 | `[[miner]]` | opcional, en lugar del emparejamiento en el panel, por equipo: `name`, `url` (`http://IP:18000`), `token`, `watts` (consumo adicional), `note` (medición) |
 
@@ -40,9 +40,9 @@ Tras cambios: `sudo docker restart xmr-ledger`.
 | Página | Contenido |
 |---|---|
 | **Übersicht** (resumen) | Saldo, importe vendible libre de impuestos, ingresos/electricidad/resultado del año, estado de los equipos con fila de total (hashrate y consumo adicional de todos los equipos minando, incl. NAS si está configurado), últimos pagos, descargas |
-| **Zuflüsse** (entradas) | Todos los pagos con cotización y fuente; otras entradas por separado |
+| **Zuflüsse** (entradas) | Todos los pagos con cotización, fuente y «Verursacht von» (parte por equipo), tabla «Je Rechner» del año; otras entradas por separado |
 | **Strom** (electricidad) | Horas de minería, vatios medios, kWh, ct/kWh medios, coste por equipo y mes, más totales de todos los equipos (año y por mes) |
-| **Auswertung** (análisis) | Periodo a elección (preajustes: última noche, 24 h, 7/30 días, mes, año): por equipo, tiempo minando/en pausa/inaccesible con línea de tiempo, hashrate medio/máx., hashes, kWh, coste; valor esperado (hashes ÷ dificultad × recompensa de bloque) frente a pagos reales; por día; CSV |
+| **Auswertung** (análisis) | Periodo a elección (preajustes: última noche, 24 h, 7/30 días, mes, año): por equipo, tiempo minando/en pausa/inaccesible con línea de tiempo, hashrate medio/máx., hashes, kWh, coste, shares y XMR atribuidos; valor esperado (hashes ÷ dificultad × recompensa de bloque) frente a pagos reales; línea de tiempo «Shares und Auszahlungen» con «Verursacht von»; por día; CSV |
 | **Lose** (lotes) | Lotes FIFO con coste de adquisición y fecha **steuerfrei ab** (exento desde) |
 | **Abgänge** (salidas) | Registrar/borrar transferencias desde la billetera de minería |
 | **Verkaufs-Rechner** (calculadora de venta) | Simular una venta/permuta prevista (no se guarda nada) |
@@ -85,6 +85,40 @@ Los equipos nuevos pueden añadirse sin una entrada en `config.toml`:
 Los equipos emparejados se notifican con su token mediante `POST /api/heartbeat`; una IP cambiada se adopta.
 Los equipos de `[[miner]]` siguen funcionando igual (los cambios ahí siguen requiriendo reiniciar el contenedor).
 
+## Pago → equipo
+
+P2Pool paga según PPLNS: un pago se reparte entre todas las shares de la ventana de los últimos 2160 bloques de la
+sidechain (mini ≈ 6 h, nano ≈ 18 h), ponderadas por su dificultad. Por eso el ledger muestra para cada pago qué
+equipos propios participaron y con qué parte: en **Zuflüsse** («Verursacht von», tabla «Je Rechner») y en
+**Auswertung** (línea de tiempo «Shares und Auszahlungen», columnas «Shares» y «zugeordnet XMR»).
+
+- **exakt** (exacto): a partir del log de P2Pool. Cada share propia aparece con hora, dificultad y dirección del
+  cliente (`SHARE FOUND: … client <IP:puerto>[, user <nombre>]`), cada pago con la altura del bloque. El ledger lee
+  el log de forma continua cada 60 s (tablas `p2pool_shares`, `p2pool_payouts`). La IP del cliente se asigna a un
+  equipo mediante `[[miner]]` y los equipos emparejados; si el login de XMRig (`-u <nombre>`) coincide con un
+  nombre de equipo, tiene prioridad y sobrevive a cambios de IP. Las direcciones desconocidas aparecen como
+  «unbekannt».
+- **teilweise** (parcial): el log empieza dentro de la ventana de este pago.
+- **geschätzt** (estimado): sin shares del log (falta el log o empieza más tarde); reparto según la parte de hashes
+  de los valores por hora del análisis.
+
+**Activar:** el servicio `ledger` recibe el volumen de P2Pool en solo lectura (`deploy/nas/compose.yaml`):
+
+```yaml
+    volumes:
+      - ./ledger/data:/data
+      - p2pool-data:/p2pool:ro
+```
+
+Después sustituye `compose.yaml` en el NAS y ejecuta `sudo docker compose -p monero-pool up -d`. Sin el volumen
+todo sigue funcionando como antes, solo «geschätzt». **Historial:** P2Pool no rota su log por sí mismo; mientras
+no se haya borrado `p2pool.log`, el ledger lee todo el historial en el primer arranque y atribuye también los pagos
+anteriores de forma exacta.
+
+Solo visualización: entradas, cotizaciones, informe y tratamiento fiscal no cambian; a efectos fiscales sigue
+contando el pago completo. No se consultan servicios externos como p2pool.observer, porque eso vincularía la
+dirección de minería con tu IP.
+
 ## Uso
 
 - **Salidas:** una billetera de solo lectura no ve las transferencias salientes. Registra cada transferencia:
@@ -109,6 +143,7 @@ Los equipos de `[[miner]]` siguen funcionando igual (los cambios ahí siguen req
 | `miners.py` | Consultar la API de XMRig, registrar tiempo de minería y costes |
 | `devices.py` | Equipos emparejados: código de emparejamiento, registro, aprobación, historial de vatios, heartbeat |
 | `activity.py` | Valores por hora por equipo, análisis por periodos |
+| `shares.py` | Leer el log de P2Pool, atribuir pagos a los equipos (solo visualización) |
 | `network.py` | Dificultad y recompensa de bloque desde tu propio nodo |
 | `ledger.py` | Lotes, FIFO, plazos, resumen anual, calculadora de venta |
 | `report.py` | Exportación a Excel y CSV |
@@ -122,6 +157,9 @@ Pruebas: `python -m pytest -q ledger/tests` (billetera, XMRig y cotizaciones sim
 - Análisis: los valores por minuto (con línea de tiempo) se conservan 30 días, después valores por hora. Hashes =
   hashrate informado × intervalo de consulta (aproximación); el valor esperado ignora uncles/huérfanos. Solo
   visualización, no es base fiscal.
+- Pago → equipo: la ventana se basa en el tiempo (2160 × tiempo de bloque) y por tanto aproxima la ventana PPLNS;
+  no se tienen en cuenta los uncles. Si P2Pool ve una dirección interna de Docker en lugar de la IP del equipo,
+  ayuda un login de XMRig con el nombre del equipo.
 - CoinGecko (gratuito, sin garantía); con la API gratuita, las cotizaciones históricas solo llegan a
   aproximadamente un año atrás.
 - El tiempo de minería solo cuenta mientras el ledger está en marcha y alcanza el equipo (los costes tienden a

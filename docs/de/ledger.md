@@ -17,7 +17,7 @@ Enthält den **View-Key** – nicht weitergeben, nicht ins Repository.
 | `[web]` | `port`, `user`, `password` (Pflicht) |
 | `[prices]` | `coingecko_api_key` (optional, kostenloser Demo-Key erhöht das Limit) |
 | `[node]` | `rpc_url` des eigenen Nodes für Difficulty und Blockbelohnung (Standard `http://monerod:18089/json_rpc`, leer = aus) |
-| `[pool]` | für neue Rechner: `stratum_host` (leer = IP der NAS), `stratum_port` (Standard 3333); `pairing` (Standard `true`) erlaubt die Kopplung per Code |
+| `[pool]` | für neue Rechner: `stratum_host` (leer = IP der NAS), `stratum_port` (Standard 3333); `pairing` (Standard `true`) erlaubt die Kopplung per Code; `log` (P2Pool-Log, Standard `/p2pool/p2pool.log`) und `sidechain` (`mini`, `nano`, `main`) für [Auszahlung → Rechner](#auszahlung--rechner) |
 | `[power]` | `poll_seconds`, `nas_extra_watts` (0 = NAS nicht ansetzen), `[[power.tariff]]` mit `valid_from`, `ct_per_kwh` |
 | `[[miner]]` | optional statt der Kopplung im Dashboard: je Rechner `name`, `url` (`http://IP:18000`), `token`, `watts` (Mehrverbrauch), `note` (Messung) |
 
@@ -36,9 +36,9 @@ Nach Änderungen: `sudo docker restart xmr-ledger`.
 | Seite | Inhalt |
 |---|---|
 | Übersicht | Bestand, steuerfrei veräußerbar, Einnahmen/Strom/Ergebnis des Jahres, Gerätestatus mit Gesamtzeile (Hashrate und Mehrverbrauch aller minenden Geräte, ggf. inkl. NAS), letzte Auszahlungen, Downloads |
-| Zuflüsse | alle Auszahlungen mit Kurs und Kursquelle; sonstige Zugänge separat |
+| Zuflüsse | alle Auszahlungen mit Kurs, Kursquelle und „Verursacht von“ (Anteile je Rechner), Tabelle „Je Rechner“ fürs Jahr; sonstige Zugänge separat |
 | Strom | Mining-Stunden, Ø Watt, kWh, Ø ct/kWh, Kosten je Gerät und Monat, dazu Summen über alle Geräte (Jahr und je Monat) |
-| Auswertung | frei wählbarer Zeitraum (Vorlagen: letzte Nacht, 24 h, 7/30 Tage, Monat, Jahr): je Gerät Zeit mint/pausiert/nicht erreichbar mit Zeitleiste, Ø/Max-Hashrate, Hashes, kWh, Kosten; rechnerischer Gegenwert (Hashes ÷ Difficulty × Blockbelohnung) gegen tatsächliche Auszahlungen; je Tag; CSV |
+| Auswertung | frei wählbarer Zeitraum (Vorlagen: letzte Nacht, 24 h, 7/30 Tage, Monat, Jahr): je Gerät Zeit mint/pausiert/nicht erreichbar mit Zeitleiste, Ø/Max-Hashrate, Hashes, kWh, Kosten, Shares und zugeordnete XMR; rechnerischer Gegenwert (Hashes ÷ Difficulty × Blockbelohnung) gegen tatsächliche Auszahlungen; Zeitleiste „Shares und Auszahlungen“ mit „Verursacht von“; je Tag; CSV |
 | Lose | FIFO-Lose mit Anschaffungskosten und „steuerfrei ab“ |
 | Abgänge | Überweisungen aus der Mining-Wallet erfassen/löschen |
 | Verkaufs-Rechner | geplanten Verkauf/Tausch simulieren (nichts wird gespeichert) |
@@ -77,6 +77,40 @@ Neue Rechner lassen sich ohne Eintrag in der `config.toml` anmelden:
 Gekoppelte Rechner melden sich mit ihrem Token über `POST /api/heartbeat`; eine geänderte IP wird übernommen.
 Rechner aus `[[miner]]` laufen unverändert weiter (Änderungen dort wie bisher mit Neustart des Containers).
 
+## Auszahlung → Rechner
+
+P2Pool zahlt nach PPLNS: Eine Auszahlung verteilt sich auf alle Shares im Fenster der letzten 2160
+Sidechain-Blöcke (mini ≈ 6 h, nano ≈ 18 h), gewichtet nach Share-Difficulty. Der Ledger zeigt deshalb je
+Auszahlung, welche eigenen Rechner mit welchem Anteil beteiligt waren – unter **Zuflüsse** („Verursacht von“,
+Tabelle „Je Rechner“) und unter **Auswertung** (Zeitleiste „Shares und Auszahlungen“, Spalten „Shares“ und
+„zugeordnet XMR“).
+
+- **exakt:** aus dem P2Pool-Log. Jede eigene Share steht dort mit Zeit, Difficulty und Client-Adresse
+  (`SHARE FOUND: … client <IP:Port>[, user <Name>]`), jede Auszahlung mit Blockhöhe. Der Ledger liest das Log alle
+  60 s fortlaufend ein (Tabellen `p2pool_shares`, `p2pool_payouts`). Die Client-IP wird über `[[miner]]` und die
+  gekoppelten Rechner einem Gerät zugeordnet; stimmt der XMRig-Login (`-u <Name>`) mit einem Gerätenamen überein,
+  hat er Vorrang und übersteht so IP-Wechsel. Unbekannte Adressen erscheinen als „unbekannt“.
+- **teilweise:** Das Log beginnt erst innerhalb des Fensters dieser Auszahlung.
+- **geschätzt:** keine Shares aus dem Log (Log fehlt oder beginnt später) – Aufteilung nach Hash-Anteil aus den
+  Stundenwerten der Auswertung.
+
+**Einbinden:** Der Dienst `ledger` bekommt das P2Pool-Volume nur lesend (`deploy/nas/compose.yaml`):
+
+```yaml
+    volumes:
+      - ./ledger/data:/data
+      - p2pool-data:/p2pool:ro
+```
+
+Danach die `compose.yaml` auf der NAS ersetzen und `sudo docker compose -p monero-pool up -d` ausführen. Ohne das
+Volume läuft alles wie bisher, nur „geschätzt“. **Bisheriger Verlauf:** P2Pool rotiert sein Log nicht selbst;
+solange `p2pool.log` nicht gelöscht wurde, liest der Ledger beim ersten Start die ganze Historie ein und ordnet
+auch ältere Auszahlungen exakt zu.
+
+Reine Anzeige: Zuflüsse, Kurse, Bericht und steuerliche Behandlung bleiben unverändert; steuerlich zählt weiter
+die ganze Auszahlung. Externe Dienste wie p2pool.observer werden nicht abgefragt, weil das die Mining-Adresse mit
+der eigenen IP verknüpfen würde.
+
 ## Bedienung
 
 - **Abgänge:** Die Nur-Lesen-Wallet sieht keine Ausgänge. Jede Überweisung erfassen: Menge = an andere
@@ -100,6 +134,7 @@ Rechner aus `[[miner]]` laufen unverändert weiter (Änderungen dort wie bisher 
 | `miners.py` | XMRig-API abfragen, Mining-Zeit und Kosten festschreiben |
 | `devices.py` | gekoppelte Rechner: Kopplungscode, Anmeldung, Freigabe, Watt-Historie, Heartbeat |
 | `activity.py` | Stundenwerte je Gerät, Auswertung über Zeiträume |
+| `shares.py` | P2Pool-Log einlesen, Auszahlungen den Rechnern zuordnen (nur Anzeige) |
 | `network.py` | Difficulty und Blockbelohnung vom eigenen Node |
 | `ledger.py` | Lose, FIFO, Fristen, Jahresübersicht, Verkaufs-Rechner |
 | `report.py` | Excel- und CSV-Export |
@@ -112,6 +147,9 @@ Tests: `python -m pytest -q ledger/tests` (Fake-Wallet, Fake-XMRig, Fake-Kurse �
 
 - Auswertung: Minutenwerte (mit Zeitleiste) bleiben 30 Tage, danach Stundenwerte. Hashes = gemeldete Hashrate ×
   Abfrageintervall (Näherung); der Gegenwert berücksichtigt keine Uncles/Orphans. Reine Anzeige, keine Steuergrundlage.
+- Auszahlung → Rechner: Das Fenster ist zeitbasiert (2160 × Blockzeit) und damit eine Näherung an das
+  PPLNS-Fenster; Uncles bleiben unberücksichtigt. Sieht P2Pool statt der Rechner-IP nur eine Docker-interne
+  Adresse, hilft ein XMRig-Login mit dem Gerätenamen.
 - CoinGecko (kostenlos, ohne Gewähr); historische Kurse über die freie API nur etwa ein Jahr zurück.
 - Mining-Zeit zählt nur, solange der Ledger läuft und den Mac erreicht (eher zu niedrige als zu hohe Kosten).
 - Netzwerkgebühren werden im Verkaufs-Rechner nicht abgezogen.

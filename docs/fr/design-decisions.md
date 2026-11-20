@@ -5,6 +5,15 @@
 Pourquoi Moneta est construit ainsi. Ajouter les nouvelles entrées en haut (date, contexte, décision,
 conséquences). La [version allemande](../de/design-decisions.md) sert de référence.
 
+### D-12 · 19.11.2026 – Attribuer les paiements aux ordinateurs : propre journal P2Pool plutôt que services externes
+Avec plusieurs ordinateurs, on ne sait pas lequel a « causé » un paiement. Selon PPLNS, un paiement se répartit sur
+toutes les shares propres de la fenêtre ; quel ordinateur a trouvé une share n'est consigné que dans le journal de
+votre propre P2Pool (adresse du client, éventuellement le nom de login). Le ledger monte donc le volume P2Pool en
+lecture seule et lit le journal en continu. Les services publics comme p2pool.observer sont exclus : ils ne
+connaissent pas les ordinateurs, et chaque requête relierait l'adresse de minage à votre IP. Sans journal, la
+répartition est estimée selon la part de hashes et signalée comme telle. L'attribution n'est qu'un affichage ;
+entrées, cours et rapport restent inchangés, et fiscalement c'est le paiement entier qui compte.
+
 ### D-11 · 14.11.2026 – Choisir les threads selon l'utilité marginale plutôt qu'une règle empirique
 La règle « sans ventilateur : cœurs performance − 1 » vient d'un M1 et ignore les cœurs efficacité ; sur un M4
 (4 + 6 cœurs), six cœurs n'étaient pas testés. `einmessen.sh` mesure donc des paliers jusqu'à tous les cœurs et

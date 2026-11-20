@@ -14,6 +14,7 @@ import db
 import miners
 import network
 import prices
+import shares
 import version
 import walletsync
 import web
@@ -42,6 +43,7 @@ def main() -> None:
         threading.Thread(target=prices.loop, args=(cfg, stop), name="prices", daemon=True),
         threading.Thread(target=miners.loop, args=(cfg, stop), name="miners", daemon=True),
         threading.Thread(target=network.loop, args=(cfg, stop), name="network", daemon=True),
+        threading.Thread(target=shares.loop, args=(cfg, stop), name="shares", daemon=True),
     ]
     for t in threads:
         t.start()

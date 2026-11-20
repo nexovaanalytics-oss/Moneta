@@ -129,6 +129,27 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (device_id, valid_from)
     );
     """,
+    # 5: Sidechain-Shares und Auszahlungen aus dem P2Pool-Log, um Auszahlungen den Rechnern zuzuordnen
+    #    (reine Anzeige; Zuflüsse und Kurse bleiben unverändert)
+    """
+    CREATE TABLE IF NOT EXISTS p2pool_shares (
+        ts               INTEGER NOT NULL,   -- Zeitpunkt laut P2Pool-Log (UTC)
+        sidechain_height INTEGER NOT NULL,
+        mainchain_height INTEGER NOT NULL,
+        difficulty       INTEGER NOT NULL,   -- Sidechain-Difficulty = Gewicht im PPLNS-Fenster
+        client           TEXT NOT NULL,      -- IP des Rechners, wie P2Pool sie sieht
+        worker           TEXT,               -- Login-Name des Miners (XMRig -u), falls gesetzt
+        device           TEXT,               -- Gerät beim Einlesen; NULL = IP unbekannt
+        effort           REAL,
+        PRIMARY KEY (sidechain_height, ts, client)
+    );
+    CREATE INDEX IF NOT EXISTS idx_p2pool_shares_ts ON p2pool_shares(ts);
+    CREATE TABLE IF NOT EXISTS p2pool_payouts (
+        height INTEGER PRIMARY KEY,          -- Monero-Blockhöhe
+        ts     INTEGER NOT NULL,             -- Zeitpunkt laut P2Pool-Log (UTC)
+        amount INTEGER NOT NULL              -- Piconero laut P2Pool
+    );
+    """,
 ]
 
 _local = threading.local()

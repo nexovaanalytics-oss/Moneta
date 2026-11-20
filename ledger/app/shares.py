@@ -10,15 +10,23 @@ Share gefunden hat, steht nur im Log des eigenen P2Pool-Knotens:
   NOTICE  2026-11-14 05:30:02.5678 P2Pool Your wallet 4… got a payout of 0.000312345678 XMR in block 3806070
 
 Der Ledger liest dieses Log (im Compose-Stack nur lesend eingebunden) fortlaufend ein. Jede Auszahlung wird auf
-die Rechner verteilt, deren Shares im Fenster davor lagen („exakt“). Reicht das Log nicht so weit zurück oder
-fehlt es, wird nach dem Hash-Anteil der Rechner im Fenster verteilt („geschätzt“).
+die Rechner verteilt, deren Shares im Fenster davor lagen. Welcher Rechner eine Share gefunden hat, ergibt sich
+in dieser Reihenfolge aus
+  1. dem Login-Namen (XMRig -u = Gerätename) oder der Client-IP                         → „exakt“
+  2. den Mining-Zeiten des Ledgers: minte zum Zeitpunkt nur ein Rechner, war er es        → „eindeutig“
+  3. sonst anteilig nach der Hashrate der gleichzeitig minenden Rechner                  → „geschätzt“
+P2Pool hinter dem Docker-Port-Proxy sieht oft nur die Gateway-Adresse; dann greifen 2. und 3.
+Reicht das Log nicht so weit zurück oder fehlt es, wird nach dem Hash-Anteil der Rechner im Fenster verteilt
+(„geschätzt“).
 
 Reine Anzeige: Zuflüsse, Kurse, Bericht und Steuerwerte bleiben unverändert. Es geht nichts ins Internet.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
+import time
 import re
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -113,15 +121,85 @@ def host_map(cfg: Config) -> dict[str, str]:
     return out
 
 
-def _resolver(cfg: Config):
-    hosts = host_map(cfg)
-    names = {n.lower(): n for n in device_names(cfg)}
+def p2pool_user(name: str) -> str:
+    """So kürzt P2Pool einen Login zum „user“ im Log: bis zum ersten '+' oder '.', nur druckbares ASCII ohne
+    Komma, Anführungszeichen und Backslash, höchstens 31 Zeichen (stratum_server.cpp, get_custom_user)."""
+    out = []
+    for ch in name:
+        if ch in "+.":
+            break
+        if " " <= ch <= "~" and ch not in ',"\\':
+            out.append(ch)
+        if len(out) == 31:
+            break
+    return "".join(out).strip().lower()
 
-    def resolve(worker: str | None, client: str) -> str | None:
-        if worker and worker.lower() in names:   # XMRig-Login = Gerätename (robust bei IP-Wechsel)
-            return names[worker.lower()]
-        return hosts.get(client)
+
+def _resolver(cfg: Config):
+    """resolve(worker, client) → (Gerät, 'login'|'ip') oder (None, None)."""
+    hosts = host_map(cfg)
+    names: dict[str, str] = {}
+    for n in device_names(cfg):
+        names.setdefault(p2pool_user(n), n)
+
+    def resolve(worker: str | None, client: str) -> tuple[str | None, str | None]:
+        w = p2pool_user(worker) if worker else ""
+        if w and w != "x" and w in names:        # XMRig-Login = Gerätename (robust bei IP-Wechsel und Docker)
+            return names[w], "login"
+        if client in hosts:
+            return hosts[client], "ip"
+        return None, None
     return resolve
+
+
+def active_weights(cfg: Config, ts: int) -> dict[str, float]:
+    """Welche Rechner minten zum Zeitpunkt ts, mit welcher Hashrate? Aus den Minutenwerten (± 2 Abfragen),
+    sonst aus den Stundenwerten der Stunde. NAS zählt nicht."""
+    cap = 2 * cfg.poll_seconds
+    acc: dict[str, list[float]] = {}
+    for r in db.get().execute(
+            "SELECT device, hashrate FROM power_samples WHERE ts >= ? AND ts <= ? AND mining = 1 AND hashrate > 0",
+            (ts - cap, ts + cap)):
+        if r["device"] != activity.NAS_DEVICE:
+            acc.setdefault(r["device"], []).append(r["hashrate"])
+    w = {d: sum(v) / len(v) for d, v in acc.items()}
+    if not w:
+        for r in db.get().execute("SELECT device, hashes FROM activity_hourly WHERE hour = ? AND hashes > 0",
+                                  (activity.hour_of(ts),)):
+            if r["device"] != activity.NAS_DEVICE:
+                w[r["device"]] = r["hashes"] / activity.HOUR
+    return w
+
+
+def classify(cfg: Config, now: int | None = None) -> int:
+    """Bestimmt für Shares ohne Herkunft das Gerät: Login/IP, sonst Mining-Zeiten (einziger Rechner → „allein“,
+    mehrere → „anteilig“ mit Hashrate je Gerät). Wartet, bis die Minutenwerte um die Share vorliegen.
+    Das Ergebnis wird gespeichert, weil Minutenwerte nach 30 Tagen gelöscht werden."""
+    now = int(time.time()) if now is None else now
+    settle = 2 * cfg.poll_seconds + 60
+    c = db.get()
+    rows = c.execute("SELECT rowid, ts, worker, client FROM p2pool_shares WHERE source IS NULL AND ts <= ?",
+                     (now - settle,)).fetchall()
+    if not rows:
+        return 0
+    resolve = _resolver(cfg)
+    updates = []
+    for r in rows:
+        dev, how = resolve(r["worker"], r["client"])
+        parts = None
+        if not dev:
+            w = active_weights(cfg, r["ts"])
+            if len(w) == 1:
+                dev, how = next(iter(w)), "allein"
+            elif w:
+                how, parts = "anteilig", json.dumps(w, ensure_ascii=False, sort_keys=True)
+            else:
+                how = "unbekannt"
+        updates.append((dev, how, parts, r["rowid"]))
+    with db.write_lock:
+        c.executemany("UPDATE p2pool_shares SET device = ?, source = ?, parts = ? WHERE rowid = ?", updates)
+        c.commit()
+    return len(updates)
 
 
 # ---------- Log einlesen ----------
@@ -180,7 +258,7 @@ def ingest(cfg: Config) -> int:
                 if p is None:
                     continue
                 if p["kind"] == "share":
-                    p["device"] = resolve(p["worker"], p["client"])
+                    p["device"], p["source"] = resolve(p["worker"], p["client"])
                     shares.append(p)
                 else:
                     payouts.append(p)
@@ -191,9 +269,9 @@ def ingest(cfg: Config) -> int:
         for s in shares:
             n += c.execute(
                 "INSERT OR IGNORE INTO p2pool_shares(ts, sidechain_height, mainchain_height, difficulty, client, "
-                "worker, device, effort) VALUES(?,?,?,?,?,?,?,?)",
+                "worker, device, effort, source) VALUES(?,?,?,?,?,?,?,?,?)",
                 (s["ts"], s["sidechain_height"], s["mainchain_height"], s["difficulty"], s["client"], s["worker"],
-                 s["device"], s["effort"])).rowcount
+                 s["device"], s["effort"], s["source"])).rowcount
         for p in payouts:
             n += c.execute("INSERT OR IGNORE INTO p2pool_payouts(height, ts, amount) VALUES(?,?,?)",
                            (p["height"], p["ts"], p["amount"])).rowcount
@@ -214,6 +292,7 @@ def loop(cfg: Config, stop) -> None:
     while not stop.is_set():
         try:
             ingest(cfg)
+            classify(cfg)
         except Exception:  # noqa: BLE001
             log.exception("P2Pool-Log: unerwarteter Fehler")
         stop.wait(60)
@@ -230,13 +309,30 @@ def window_s(cfg: Config) -> int:
     return PPLNS_BLOCKS * BLOCK_TIME.get(cfg.sidechain, 10)
 
 
+SOURCE_RANK = {"login": 0, "ip": 0, "allein": 1, "anteilig": 2}
+
+
 def shares_between(cfg: Config, a: int, b: int) -> list[dict]:
-    """Eigene Shares mit a < ts <= b, Gerät aufgelöst (unbekannte IPs → „unbekannt“)."""
+    """Eigene Shares mit a < ts <= b. Je Share: device (bei „anteilig“ das Gerät mit der höchsten Hashrate),
+    split {Gerät: Anteil 0..1} und source. Noch nicht bestimmte Shares: Login/IP, sonst „unbekannt“."""
     resolve = _resolver(cfg)
     out = []
     for r in db.get().execute("SELECT * FROM p2pool_shares WHERE ts > ? AND ts <= ? ORDER BY ts", (a, b)):
         d = dict(r)
-        d["device"] = d["device"] or resolve(d["worker"], d["client"]) or UNKNOWN
+        w = json.loads(d["parts"]) if d["source"] == "anteilig" and d["parts"] else {}
+        total = sum(w.values())
+        if total > 0:
+            d["split"] = {k: v / total for k, v in sorted(w.items(), key=lambda kv: -kv[1])}
+            d["device"] = next(iter(d["split"]))
+        else:
+            if not d["device"]:
+                d["device"], how = resolve(d["worker"], d["client"])
+                if d["device"]:
+                    d["source"] = how
+            d["device"] = d["device"] or UNKNOWN
+            d["split"] = {d["device"]: 1.0}
+            if d["source"] == "anteilig":
+                d["source"] = "unbekannt"
         out.append(d)
     return out
 
@@ -271,7 +367,8 @@ def split(amount: int, weights: dict) -> dict[str, int]:
 def attribute(cfg: Config, payouts: list[dict]) -> dict[str, dict]:
     """Ordnet Auszahlungen (Zeilen aus inflows: txid, height, ts, amount) den Rechnern zu.
 
-    Ergebnis je txid: method („exakt“, „teilweise“ = Log beginnt im Fenster, „geschätzt“, „offen“),
+    Ergebnis je txid: method („exakt“ = Login/IP, „eindeutig“ = nur ein Rechner minte zur Zeit der Share,
+    „teilweise“ = Log beginnt im Fenster, „geschätzt“ = Hash-Anteil, „offen“),
     parts {Gerät: Piconero}, shares (die Shares im Fenster), ts (Zeitpunkt laut Log, sonst Blockzeit),
     window (Beginn, Ende)."""
     if not payouts:
@@ -293,11 +390,18 @@ def attribute(cfg: Config, payouts: list[dict]) -> dict[str, dict]:
         sh = shares_between(cfg, a, t if p["height"] in logged else t + LATE_S)
         res = {"ts": t, "window": (a, t), "shares": sh, "parts": {}, "method": "offen"}
         if sh:
-            weights: dict[str, int] = {}
+            weights: dict[str, Decimal] = {}
             for s in sh:
-                weights[s["device"]] = weights.get(s["device"], 0) + s["difficulty"]
+                for dev, f in s["split"].items():
+                    weights[dev] = weights.get(dev, Decimal(0)) + Decimal(s["difficulty"]) * Decimal(str(f))
             res["parts"] = split(p["amount"], weights)
-            res["method"] = "exakt" if since is not None and since <= a else "teilweise"
+            rank = max(SOURCE_RANK.get(s["source"], 0) for s in sh)
+            if rank == 2:
+                res["method"] = "geschätzt"
+            elif since is None or since > a:
+                res["method"] = "teilweise"
+            else:
+                res["method"] = "eindeutig" if rank == 1 else "exakt"
         else:
             hw = hash_weights(a, t)
             if hw:
@@ -320,7 +424,7 @@ def by_device(payouts: list[dict], attr: dict[str, dict]) -> dict[str, dict]:
             d = out.setdefault(dev, {"pico": 0, "exact": 0, "eur": Decimal(0), "payouts": 0})
             d["pico"] += pico
             d["payouts"] += 1
-            if res["method"] == "exakt":
+            if res["method"] in ("exakt", "eindeutig"):
                 d["exact"] += pico
             if price is not None:
                 d["eur"] += ledger.eur(ledger.xmr(pico) * price)

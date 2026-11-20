@@ -5,6 +5,15 @@
 Warum Moneta so gebaut ist. Neue Einträge oben anfügen (Datum, Kontext, Entscheidung, Folgen).
 Diese deutsche Fassung ist die Referenz; Übersetzungen bitte mitziehen.
 
+### D-13 · 20.11.2026 – Rechner einer Share: Login-Name, sonst Mining-Zeiten
+Hinter dem Docker-Port-Proxy sieht P2Pool bei jeder Verbindung nur die Gateway-Adresse; die Client-IP taugt dann
+nicht zur Zuordnung. Ein anderes Netzwerk für P2Pool (Host-Netz) oder ein Eingriff in den Docker-Dienst der NAS
+wären tiefe Änderungen am Stack. Stattdessen meldet sich XMRig mit dem Gerätenamen an (`-u`); P2Pool schreibt
+ihn zu jeder Share ins Log und nutzt ihn sonst nicht. Für ältere Shares mit Login `x` entscheiden die
+Mining-Zeiten, die der Ledger ohnehin erfasst: Minte nur ein Rechner, ist die Share „eindeutig“ seine, sonst wird
+sie nach Hashrate geteilt („geschätzt“). Das Ergebnis wird je Share gespeichert, weil Minutenwerte nach 30 Tagen
+gelöscht werden. Weiterhin reine Anzeige.
+
 ### D-12 · 19.11.2026 – Auszahlungen den Rechnern zuordnen: eigenes P2Pool-Log statt externer Dienste
 Bei mehreren Rechnern ist offen, welcher eine Auszahlung „verursacht“ hat. Nach PPLNS verteilt sich eine
 Auszahlung auf alle eigenen Shares im Fenster; welcher Rechner eine Share gefunden hat, steht nur im Log des eigenen

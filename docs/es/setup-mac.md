@@ -45,6 +45,11 @@ aprobación; los vatios se fijan en cada registro. Una IP fija en el router sigu
 es imprescindible: en cada arranque el equipo se notifica al ledger (`moneta-miner.sh heartbeat`) y se adopta una
 IP cambiada.
 
+XMRig se conecta a P2Pool con el nombre del equipo (`~/.config/moneta/name`, tomado del ledger en los equipos
+emparejados). Con él, el ledger atribuye shares y pagos al equipo, aunque P2Pool solo vea una dirección interna en
+la red de Docker ([Pago → equipo](ledger.md#pago--equipo)). Equipos ya configurados: `git pull` y ejecutar
+`install.sh` de nuevo.
+
 Sin preguntas (p. ej. para varios equipos): `LEDGER=http://<IP-NAS>:8090 CODE=<código> THREADS=3 MEASURE=n
 AUTOSTART=n FIREWALL=j START=n ~/Moneta/deploy/mac/install.sh`. Desinstalar: `~/Moneta/deploy/mac/install.sh
 --uninstall` (se conservan los ajustes, el registro y XMRig).

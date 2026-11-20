@@ -44,6 +44,11 @@ approval onwards; watts are frozen with every sample. A fixed IP in the router i
 required: on every start the computer reports to the ledger (`moneta-miner.sh heartbeat`), and a changed IP is
 taken over.
 
+XMRig logs in to P2Pool with the device name (`~/.config/moneta/name`, taken from the ledger for paired
+computers). The ledger uses it to attribute shares and payouts to the computer, even if P2Pool only sees an
+internal address on the Docker network ([Payout → computer](ledger.md#payout--computer)). Computers set up
+earlier: `git pull` and run `install.sh` again.
+
 Without prompts (e.g. for several computers): `LEDGER=http://<NAS-IP>:8090 CODE=<code> THREADS=3 MEASURE=n
 AUTOSTART=n FIREWALL=j START=n ~/Moneta/deploy/mac/install.sh`. Remove: `~/Moneta/deploy/mac/install.sh
 --uninstall` (settings, log and XMRig are kept).

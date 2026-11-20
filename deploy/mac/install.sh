@@ -420,7 +420,8 @@ if [ -n "$ledger" ] && [ "$pairing" = true ] && [[ "$ip" =~ ^[0-9.]+$ ]]; then
   if [ "$code_http" = 200 ]; then
     paired=true
     st="$(json_get "$(cat "$resp")" status)"
-    ok "Schon gekoppelt als „$(json_get "$(cat "$resp")" name)“ ($([ "$st" = active ] && echo freigegeben || echo "wartet auf Freigabe im Dashboard"))"
+    name="$(json_get "$(cat "$resp")" name)"
+    ok "Schon gekoppelt als „$name“ ($([ "$st" = active ] && echo freigegeben || echo "wartet auf Freigabe im Dashboard"))"
   else
     echo "  Im Dashboard ($ledger) unter „Geräte“ auf „Neuen Rechner koppeln – Code erzeugen“ klicken"
     echo "  und den 6-stelligen Code hier eingeben (Enter = überspringen, dann [[miner]]-Block von Hand)."
@@ -459,6 +460,9 @@ if [ "$paired" = true ]; then
   fi
 else
   [[ "$ip" =~ ^[0-9.]+$ ]] || ip='<IP-DES-RECHNERS>'
+  old_name="$( { [ -r "$CONF_DIR/name" ] && head -n 1 "$CONF_DIR/name"; } || true )"
+  echo "  Gerätename wie im Ledger: bei einem vorhandenen [[miner]]-Block genau dessen name."
+  name="$(ask "Gerätename" "${old_name:-$name}" "${NAME:-}")"
   toml_name="${name//\\/\\\\}"; toml_name="${toml_name//\"/\\\"}"
   m_watts="$(json_get "$proposal" watts)"
   m_note="$(json_get "$proposal" note)"; m_note="${m_note//\"/\\\"}"
@@ -480,6 +484,12 @@ EOF
   → Ledger neu starten. Die Watt werden je Erfassung festgeschrieben; ein falscher Wert lässt sich später
   nicht korrigieren. Der Ledger zählt Mining-Zeit erst ab dem Eintrag.
 EOF
+fi
+
+# XMRig meldet sich bei P2Pool mit dem Gerätenamen an (Zuordnung der Auszahlungen im Ledger)
+if [ -n "$name" ]; then
+  printf '%s\n' "$name" > "$CONF_DIR/name"
+  ok "XMRig-Login: „$name“ (ordnet Shares und Auszahlungen diesem Rechner zu)"
 fi
 
 say "Fertig"

@@ -5,6 +5,15 @@
 Why Moneta is built the way it is. Add new entries at the top (date, context, decision, consequences).
 The [German version](../de/design-decisions.md) is the reference.
 
+### D-13 · 20.11.2026 – A share's computer: login name, otherwise mining times
+Behind Docker's port proxy P2Pool only sees the gateway address for every connection, so the client IP is useless
+for attribution. Another network for P2Pool (host network) or changing the NAS's Docker service would be deep
+changes to the stack. Instead XMRig logs in with the device name (`-u`); P2Pool writes it to the log with every
+share and uses it for nothing else. For older shares with login `x`, the mining times the ledger records anyway
+decide: if only one computer was mining, the share is „eindeutig“ (unambiguously) its own, otherwise it is split by
+hashrate („geschätzt“). The result is stored per share because per-minute values are deleted after 30 days. Still
+display only.
+
 ### D-12 · 19.11.2026 – Attribute payouts to computers: own P2Pool log instead of external services
 With several computers it is unclear which one „caused“ a payout. Under PPLNS a payout is split across all own
 shares in the window; which computer found a share is only recorded in your own P2Pool's log (client address,

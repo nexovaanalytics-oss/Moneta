@@ -97,13 +97,20 @@ quels ordinateurs y ont participé et pour quelle part – sous **Zuflüsse** (�
 
 - **exakt** (exact) : à partir du journal P2Pool. Chaque share propre y figure avec heure, difficulté et adresse du
   client (`SHARE FOUND: … client <IP:port>[, user <nom>]`), chaque paiement avec la hauteur du bloc. Le ledger lit
-  le journal en continu toutes les 60 s (tables `p2pool_shares`, `p2pool_payouts`). L'IP du client est associée à
-  un appareil via `[[miner]]` et les ordinateurs appairés ; si le login XMRig (`-u <nom>`) correspond à un nom
-  d'appareil, il est prioritaire et résiste aux changements d'IP. Les adresses inconnues apparaissent comme
-  « unbekannt ».
+  le journal en continu toutes les 60 s (tables `p2pool_shares`, `p2pool_payouts`). Le ledger reconnaît
+  l'ordinateur d'une share à son login XMRig : l'installateur de `deploy/mac` configure XMRig
+  avec le nom de l'appareil comme login (`-u <nom>`, enregistré dans `~/.config/moneta/name`, repris du ledger
+  pour les ordinateurs appairés). Sinon, c'est l'IP du client issue de `[[miner]]` ou de l'appairage qui compte.
+- **eindeutig** (univoque) : login `x` et une adresse qui n'appartient à aucun ordinateur – typique lorsque P2Pool,
+  dans le réseau Docker, ne voit que l'adresse de la passerelle. Ce sont alors les temps de minage du ledger qui
+  tranchent : si un seul ordinateur minait au moment de la share (± deux interrogations, à l'heure après 30 jours),
+  elle lui revient. Le résultat est enregistré par share. Condition : tous les ordinateurs du pool sont connus du
+  ledger.
 - **teilweise** (partiel) : le journal ne commence qu'à l'intérieur de la fenêtre de ce paiement.
-- **geschätzt** (estimé) : aucune share issue du journal (journal absent ou commençant plus tard) – répartition
-  selon la part de hashes des valeurs horaires de l'analyse.
+- **geschätzt** (estimé) : si plusieurs ordinateurs minaient au moment d'une share, elle est répartie selon leur
+  hashrate à cet instant (losange creux dans le graphique). Sans share issue du journal (journal absent ou
+  commençant plus tard), la répartition suit la part de hashes sur toute la fenêtre. Aucun ordinateur en minage
+  selon le ledger : « unbekannt ».
 
 **Activer :** le service `ledger` reçoit le volume P2Pool en lecture seule (`deploy/nas/compose.yaml`) :
 
@@ -163,8 +170,9 @@ Tests : `python -m pytest -q ledger/tests` (faux portefeuille, faux XMRig, faux 
   hashrate annoncé × intervalle d'interrogation (approximation) ; la valeur attendue ignore les uncles/orphelins.
   Affichage uniquement, pas une base fiscale.
 - Paiement → ordinateur : la fenêtre est temporelle (2160 × temps de bloc) et n'est donc qu'une approximation de
-  la fenêtre PPLNS ; les uncles sont ignorés. Si P2Pool voit une adresse interne à Docker au lieu de l'IP de
-  l'ordinateur, un login XMRig portant le nom de l'appareil aide.
+  la fenêtre PPLNS ; les uncles sont ignorés. Derrière le proxy de ports de Docker, P2Pool ne voit que
+  l'adresse de la passerelle ; c'est alors le login XMRig qui compte. Les shares antérieures sont attribuées via
+  les temps de minage.
 - CoinGecko (gratuit, sans garantie) ; via l'API gratuite, les cours historiques ne remontent qu'à environ un an.
 - Le temps de minage n'est compté que tant que le ledger tourne et joint l'ordinateur (coûts plutôt sous-estimés
   que surestimés).

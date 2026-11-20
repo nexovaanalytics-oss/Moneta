@@ -5,6 +5,16 @@
 Pourquoi Moneta est construit ainsi. Ajouter les nouvelles entrées en haut (date, contexte, décision,
 conséquences). La [version allemande](../de/design-decisions.md) sert de référence.
 
+### D-13 · 20.11.2026 – Ordinateur d'une share : nom de login, sinon temps de minage
+Derrière le proxy de ports de Docker, P2Pool ne voit pour chaque connexion que l'adresse de la passerelle ; l'IP
+du client ne permet alors pas l'attribution. Un autre réseau pour P2Pool (réseau hôte) ou une intervention sur le
+service Docker du NAS seraient des changements profonds de la pile. À la place, XMRig se connecte avec le nom de
+l'appareil (`-u`) ; P2Pool l'inscrit au journal pour chaque share et ne l'utilise pas autrement. Pour les shares
+plus anciennes avec le login `x`, les temps de minage que le ledger enregistre de toute façon tranchent : si un
+seul ordinateur minait, la share est « eindeutig » (univoquement) la sienne, sinon elle est répartie selon le
+hashrate (« geschätzt »). Le résultat est enregistré par share, car les valeurs à la minute sont supprimées après
+30 jours. Toujours un simple affichage.
+
 ### D-12 · 19.11.2026 – Attribuer les paiements aux ordinateurs : propre journal P2Pool plutôt que services externes
 Avec plusieurs ordinateurs, on ne sait pas lequel a « causé » un paiement. Selon PPLNS, un paiement se répartit sur
 toutes les shares propres de la fenêtre ; quel ordinateur a trouvé une share n'est consigné que dans le journal de

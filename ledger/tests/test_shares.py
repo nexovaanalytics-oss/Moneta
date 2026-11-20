@@ -243,3 +243,143 @@ watts = 10.0
     assert "P2Pool-Log nicht eingebunden" in http(f"/auswertung?{q}")[1]
     srv.shutdown()
     srv.server_close()
+
+
+def test_p2pool_user():
+    import shares
+    assert shares.p2pool_user("MacBook Pro") == "macbook pro"
+    assert shares.p2pool_user("Mac.mini") == "mac" and shares.p2pool_user("a+50000") == "a"
+    assert shares.p2pool_user("Jürgens Mac") == "jrgens mac" and len(shares.p2pool_user("A" * 40)) == 31
+
+
+def test_inference_behind_docker():
+    """P2Pool hinter dem Docker-Port-Proxy sieht nur die Gateway-Adresse und Login „x“: Zuordnung über die
+    Mining-Zeiten (einziger Rechner → eindeutig, mehrere → anteilig nach Hashrate) oder den Login-Namen."""
+    data = tempfile.mkdtemp(prefix="ledger-docker-")
+    try:
+        _run_docker(data)
+    finally:
+        import db
+        db.close_thread()
+        shutil.rmtree(data, ignore_errors=True)
+
+
+def _run_docker(DATA):
+    web_port = free_port()
+    logfile = f"{DATA}/p2pool.log"
+    with open(f"{DATA}/config.toml", "w") as f:
+        f.write(f"""
+[general]
+timezone = "Europe/Berlin"
+data_dir = "{DATA}"
+
+[wallet]
+address = "4{'A' * 94}"
+view_key = "{'f' * 64}"
+restore_height = 1
+wallet_password = "pw"
+
+[web]
+port = {web_port}
+password = "geheim"
+
+[node]
+rpc_url = ""
+
+[pool]
+log = "{logfile}"
+
+[[power.tariff]]
+valid_from = "2020-01-01"
+ct_per_kwh = 30.0
+
+[[miner]]
+name = "MacBook Pro"
+url = "http://192.168.1.20:18000"
+watts = 15.0
+
+[[miner]]
+name = "Air"
+url = "http://192.168.1.21:18000"
+watts = 10.0
+""")
+    import activity, config, db, shares, web  # noqa: E401
+    db.close_thread()
+    cfg = config.load(f"{DATA}/config.toml")
+    assert db.init(f"{DATA}/ledger.sqlite") == len(db.MIGRATIONS) >= 6
+
+    gw = "172.17.0.1:40000"                       # Docker-Gateway statt Rechner-IP
+    now = int(datetime.now(timezone.utc).timestamp())
+    base = activity.hour_of(now) - 60 * 3600
+    t1, t2, t3, t4, t5 = base + 2 * 3600, base + 12 * 3600, base + 22 * 3600 + 600, base + 23 * 3600, base + 40 * 3600
+    t6 = now - 30                                 # zu frisch: Minutenwerte danach fehlen noch
+    lines = [f"NOTICE  {utc(base - 10 * 3600)}.0000 Log started\n",
+             share_line(t1, 300_000_000, gw, sidechain=1),
+             share_line(t2, 400_000_000, gw, sidechain=2),
+             share_line(t3, 100_000_000, gw, sidechain=3),
+             share_line(t4, 300_000_000, gw, user="macbook pro+500000", sidechain=4),   # Login = Gerätename
+             share_line(t5, 100_000_000, gw, sidechain=5),
+             share_line(t6, 100_000_000, gw, sidechain=6)]
+    with open(logfile, "w") as f:
+        f.writelines(lines)
+    assert shares.ingest(cfg) == 6
+
+    with db.write_lock:
+        c = db.get()
+
+        def sample(ts, dev, hr):
+            c.execute("INSERT INTO power_samples(ts, device, reachable, mining, hashrate, seconds, watts, tariff_ct) "
+                      "VALUES(?,?,?,?,?,?,?,?)", (ts, dev, 1, 1 if hr else 0, hr, 60, 15.0, 30.0))
+        for k in (-60, 0, 60):
+            sample(t1 + k, "MacBook Pro", 3000.0)     # t1: nur der Pro
+            sample(t1 + k, "Air", 0.0)                # erreichbar, aber pausiert
+            sample(t2 + k, "MacBook Pro", 3000.0)     # t2: beide
+            sample(t2 + k, "Air", 1000.0)
+            sample(t5 + k, "Air", 0.0)                # t5: keiner
+        # t3: keine Minutenwerte mehr (älter als 30 Tage) → Stundenwerte: nur der Air
+        c.execute("INSERT INTO activity_hourly(hour, device, polls, mining_s, hashes) VALUES(?,?,?,?,?)",
+                  (activity.hour_of(t3), "Air", 60, 3600, 1000.0 * 3600))
+        c.execute("INSERT INTO activity_hourly(hour, device, polls, kwh) VALUES(?,?,?,?)",
+                  (activity.hour_of(t3), activity.NAS_DEVICE, 60, 0.004))
+        pays = [(t1 + 600, 10_000_000, 3_900_001), (t2 + 600, 40_000_000, 3_900_002),
+                (t4 + 600, 40_000_000, 3_900_003)]
+        for i, (ts, amount, height) in enumerate(pays):
+            c.execute("INSERT INTO inflows(txid, height, ts, amount, kind, price_eur, price_ts, price_source, "
+                      "first_seen) VALUES(?,?,?,?,?,?,?,?,?)",
+                      (f"d{i}", height, ts, amount, "block", "400.00", ts, "test", ts))
+        c.commit()
+
+    assert shares.classify(cfg, now) == 4          # Share 4 kam schon beim Einlesen per Login
+    assert shares.classify(cfg, now) == 0
+    got = {r["sidechain_height"]: (r["device"], r["source"]) for r in db.get().execute("SELECT * FROM p2pool_shares")}
+    assert got[1] == ("MacBook Pro", "allein")
+    assert got[2] == (None, "anteilig")
+    assert got[3] == ("Air", "allein")
+    assert got[4] == ("MacBook Pro", "login")
+    assert got[5] == (None, "unbekannt")
+    assert got[6] == (None, None)                 # wird später bestimmt
+
+    rows = [dict(r) for r in db.get().execute("SELECT txid, height, ts, amount, price_eur FROM inflows ORDER BY ts")]
+    attr = shares.attribute(cfg, rows)
+    assert attr["d0"]["method"] == "eindeutig" and attr["d0"]["parts"] == {"MacBook Pro": 10_000_000}
+    assert attr["d1"]["method"] == "geschätzt" and attr["d1"]["parts"] == {"MacBook Pro": 30_000_000, "Air": 10_000_000}
+    assert attr["d2"]["method"] == "eindeutig" and attr["d2"]["parts"] == {"MacBook Pro": 30_000_000, "Air": 10_000_000}
+    tot = shares.by_device(rows, attr)
+    assert tot["MacBook Pro"]["exact"] == 40_000_000 and tot["Air"]["exact"] == 10_000_000
+
+    srv = web.serve(cfg, threading.Event())
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{web_port}/auswertung?" + urllib.parse.urlencode(
+                {"von": datetime.fromtimestamp(base, cfg.tz).strftime("%Y-%m-%dT%H:%M"),
+                 "bis": datetime.fromtimestamp(t5 + 3600, cfg.tz).strftime("%Y-%m-%dT%H:%M")}))
+        req.add_header("Authorization", "Basic " + base64.b64encode(b"admin:geheim").decode())
+        with urllib.request.urlopen(req) as r:
+            page = r.read().decode()
+        assert ">eindeutig<" in page and ">geschätzt<" in page
+        assert "fill='#fff' stroke=" in page                     # hohle Raute für die anteilige Share
+        assert "einziger minender Rechner" in page and "MacBook Pro 75 % · Air 25 %" in page
+    finally:
+        srv.shutdown()
+        srv.server_close()

@@ -150,6 +150,12 @@ MIGRATIONS: list[str] = [
         amount INTEGER NOT NULL              -- Piconero laut P2Pool
     );
     """,
+    # 6: Herkunft der Gerätezuordnung je Share. P2Pool hinter Docker sieht oft nur die Gateway-Adresse; dann
+    #    entscheiden Login-Name oder die Mining-Zeiten der Rechner zum Zeitpunkt der Share (reine Anzeige)
+    """
+    ALTER TABLE p2pool_shares ADD COLUMN source TEXT;  -- login, ip, allein, anteilig, unbekannt; NULL = offen
+    ALTER TABLE p2pool_shares ADD COLUMN parts TEXT;   -- bei „anteilig“: JSON {Gerät: Hashrate}
+    """,
 ]
 
 _local = threading.local()

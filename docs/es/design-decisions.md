@@ -5,6 +5,15 @@
 Por qué Moneta está construido así. Añadir las nuevas entradas arriba (fecha, contexto, decisión,
 consecuencias). La [versión alemana](../de/design-decisions.md) es la de referencia.
 
+### D-13 · 20.11.2026 – Equipo de una share: nombre de login o, si no, tiempos de minería
+Detrás del proxy de puertos de Docker, P2Pool solo ve la dirección de la pasarela en cada conexión, por lo que la
+IP del cliente no sirve para la atribución. Otra red para P2Pool (red del host) o tocar el servicio Docker del NAS
+serían cambios profundos en la pila. En su lugar, XMRig se conecta con el nombre del equipo (`-u`); P2Pool lo
+escribe en el log con cada share y no lo usa para nada más. Para shares anteriores con login `x` deciden los
+tiempos de minería que el ledger ya registra: si solo minaba un equipo, la share es «eindeutig» (inequívocamente)
+suya; si no, se reparte según el hashrate («geschätzt»). El resultado se guarda por share, porque los valores por
+minuto se borran a los 30 días. Sigue siendo solo visualización.
+
 ### D-12 · 19.11.2026 – Atribuir pagos a los equipos: log propio de P2Pool en lugar de servicios externos
 Con varios equipos no está claro cuál «causó» un pago. Según PPLNS, un pago se reparte entre todas las shares
 propias de la ventana; qué equipo encontró una share solo consta en el log de tu propio P2Pool (dirección del

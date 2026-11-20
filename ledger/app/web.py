@@ -313,7 +313,7 @@ def p_inflows(q) -> str:
     if dev_rows:
         dev_table = (f"<h2>Je Rechner {year}</h2>{_log_note(rows[0]['ts'] - shares.window_s(CFG))}"
                      f"<table><tr><th>Rechner</th><th class='n'>beteiligt an</th><th class='n'>zugeordnet XMR</th>"
-                     f"<th class='n'>davon exakt</th><th class='n'>Gegenwert</th></tr>{dev_rows}</table>"
+                     f"<th class='n'>davon exakt/eindeutig</th><th class='n'>Gegenwert</th></tr>{dev_rows}</table>"
                      f"<p class='mut' style='font-size:12.5px'>Nur Anzeige: Aufteilung der Auszahlungen nach den eigenen "
                      f"Shares im PPLNS-Fenster (P2Pool-Log), sonst nach Hash-Anteil. Gegenwert = Anteil × gespeicherter "
                      f"Kurs der Auszahlung, je Anteil auf Cent gerundet. Steuerlich zählt weiter die ganze Auszahlung "
@@ -375,13 +375,20 @@ def p_power(q) -> str:
 
 
 # ---------- Auszahlung → Rechner ----------
-METHOD_PILL = {"exakt": "ok", "teilweise": "warn", "geschätzt": "mut", "offen": "mut"}
+METHOD_PILL = {"exakt": "ok", "eindeutig": "ok", "teilweise": "warn", "geschätzt": "mut", "offen": "mut"}
 METHOD_HINT = {
-    "exakt": "aus den eigenen Shares im PPLNS-Fenster laut P2Pool-Log, nach Difficulty",
+    "exakt": "aus den eigenen Shares im PPLNS-Fenster laut P2Pool-Log, nach Difficulty; Rechner per Login-Name oder IP",
+    "eindeutig": "aus den eigenen Shares im PPLNS-Fenster laut P2Pool-Log, nach Difficulty; zur Zeit jeder Share "
+                 "minte laut Ledger nur ein Rechner",
     "teilweise": "aus den Shares laut P2Pool-Log; das Log beginnt erst innerhalb des Fensters",
-    "geschätzt": "nach dem Hash-Anteil der Rechner im Fenster (keine eigene Share im Log)",
+    "geschätzt": "nach Hash-Anteil: keine eigene Share im Log, oder bei einer Share minten mehrere Rechner "
+                 "gleichzeitig (dann nach deren Hashrate in dem Moment)",
     "offen": "keine Share im Log und keine Hashes im Fenster",
 }
+
+
+SHARE_SOURCE = {"login": "per Login-Name", "ip": "per IP", "allein": "einziger minender Rechner",
+                "anteilig": "mehrere Rechner minten, nach Hashrate", "unbekannt": "kein Rechner minte laut Ledger"}
 
 
 def _parts_text(parts: dict) -> str:
@@ -458,7 +465,7 @@ def _share_chart(s: int, e: int, payouts: list[dict], attr: dict, sh: list[dict]
             if sh_["device"] in rows:
                 g.append(f"<line x1='{xp:.1f}' y1='{yp}' x2='{x(sh_['ts']):.1f}' y2='{rows[sh_['device']]}' "
                          f"stroke='{col.get(sh_['device'], shares.UNKNOWN_COLOR)}' stroke-width='1.5'/>")
-        filled = res["method"] in ("exakt", "teilweise")
+        filled = res["method"] in ("exakt", "eindeutig", "teilweise")
         tip = (f"Auszahlung {tsfmt(res['ts'])} · Block {p['height']} · {xmrf(p['amount'], 8)} XMR · "
                f"{_parts_text(res['parts']) or 'nicht zuordenbar'} ({res['method']})")
         g.append(f"<circle cx='{xp:.1f}' cy='{yp}' r='12' fill='transparent'/>"
@@ -471,13 +478,20 @@ def _share_chart(s: int, e: int, payouts: list[dict], attr: dict, sh: list[dict]
             continue
         xx, r = x(sh_["ts"]), 7
         worker = f" ({sh_['worker']})" if sh_["worker"] and sh_["worker"] != "x" else ""
-        tip = (f"Share {tsfmt(sh_['ts'])} · {sh_['device']} · Diff {de(sh_['difficulty'] / 1e6, 0)} Mio. · "
-               f"Effort {de(sh_['effort'] or 0, 0)} % · {sh_['client']}{worker}")
+        how = SHARE_SOURCE.get(sh_.get("source") or "", "")
+        who = (" · ".join(f"{d} {de(100 * f, 0)} %" for d, f in sh_["split"].items())
+               if len(sh_["split"]) > 1 else sh_["device"])
+        tip = (f"Share {tsfmt(sh_['ts'])} · {who}{f' ({how})' if how else ''} · Diff "
+               f"{de(sh_['difficulty'] / 1e6, 0)} Mio. · Effort {de(sh_['effort'] or 0, 0)} % · {sh_['client']}{worker}")
         faded = " opacity='.45'" if sh_["ts"] < s else ""
+        c_ = col.get(sh_["device"], shares.UNKNOWN_COLOR)
+        # anteilig (mehrere Rechner minten gleichzeitig): hohle Raute in der Spur des Rechners mit der höchsten Hashrate
+        paint = f"fill='#fff' stroke='{c_}' stroke-width='2'" if len(sh_["split"]) > 1 else \
+            f"fill='{c_}' stroke='#fff' stroke-width='2'"
+        rr = r - 1 if len(sh_["split"]) > 1 else r
         o.append(f"<g{faded}><circle cx='{xx:.1f}' cy='{y}' r='11' fill='transparent'/>"
-                 f"<polygon points='{xx:.1f},{y - r} {xx + r:.1f},{y} {xx:.1f},{y + r} {xx - r:.1f},{y}' "
-                 f"fill='{col.get(sh_['device'], shares.UNKNOWN_COLOR)}' stroke='#fff' stroke-width='2'/>"
-                 f"<title>{esc(tip)}</title></g>")
+                 f"<polygon points='{xx:.1f},{y - rr} {xx + rr:.1f},{y} {xx:.1f},{y + rr} {xx - rr:.1f},{y}' "
+                 f"{paint}/><title>{esc(tip)}</title></g>")
     o.append("</svg>")
     return "".join(o)
 
@@ -649,8 +663,8 @@ def p_analysis(q) -> str:
     share_html = ""
     if lanes or a["payouts"]:
         share_html = (f"<h2>Shares und Auszahlungen</h2>{_log_note(s_ts)}"
-                      f"<p class='mut' style='font-size:13px'>◆ eigene Share (Farbe = Rechner) · ● Auszahlung, exakt "
-                      f"zugeordnet · ○ geschätzt · Linien verbinden jede Auszahlung mit den Shares in ihrem PPLNS-Fenster "
+                      f"<p class='mut' style='font-size:13px'>◆ eigene Share (Farbe = Rechner; ◇ hohl = mehrere Rechner "
+                      f"minten gleichzeitig) · ● Auszahlung, exakt oder eindeutig zugeordnet · ○ geschätzt · Linien verbinden jede Auszahlung mit den Shares in ihrem PPLNS-Fenster "
                       f"(≈ {de(shares.window_s(CFG) / 3600, 0)} h); Maus über eine Auszahlung zeigt das Fenster.</p>"
                       f"<div style='overflow-x:auto;background:#fff;border:1px solid var(--line);border-radius:10px;"
                       f"padding:8px'>{_share_chart(s_ts, e_ts, a['payouts'], attr, sh, lanes, col)}</div>")

@@ -44,6 +44,11 @@ Rechner; die Watt werden je Erfassung festgeschrieben. Eine feste IP im Router i
 nicht mehr nötig: Bei jedem Start meldet sich der Rechner beim Ledger (`moneta-miner.sh heartbeat`), und eine
 geänderte IP wird übernommen.
 
+XMRig meldet sich bei P2Pool mit dem Gerätenamen an (`~/.config/moneta/name`, bei gekoppelten Rechnern vom Ledger
+übernommen). Daran ordnet der Ledger Shares und Auszahlungen dem Rechner zu, auch wenn P2Pool im Docker-Netz nur
+eine interne Adresse sieht ([Auszahlung → Rechner](ledger.md#auszahlung--rechner)). Bereits eingerichtete Rechner:
+`git pull` und `install.sh` erneut ausführen.
+
 Ohne Rückfragen (z. B. für mehrere Rechner): `LEDGER=http://<NAS-IP>:8090 CODE=<Code> THREADS=3 MEASURE=n
 AUTOSTART=n FIREWALL=j START=n ~/Moneta/deploy/mac/install.sh`. Entfernen: `~/Moneta/deploy/mac/install.sh
 --uninstall` (Einstellungen, Log und XMRig bleiben).

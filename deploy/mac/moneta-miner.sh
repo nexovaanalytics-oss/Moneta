@@ -57,9 +57,15 @@ heartbeat() {
   local body="{\"threads\":\"$t\""
   if [[ "$ip" =~ ^[0-9.]+$ ]]; then body="$body,\"url\":\"http://$ip:$API_PORT\""; fi
   body="$body}"
-  curl -sS -m 5 -X POST -H "Content-Type: application/json" -H "Authorization: Bearer $token" \
-    --data "$body" "$url/api/heartbeat"
-  echo
+  local resp name
+  resp="$(curl -sS -m 5 -X POST -H "Content-Type: application/json" -H "Authorization: Bearer $token" \
+    --data "$body" "$url/api/heartbeat")"
+  echo "$resp"
+  # Gerätenamen aus dem Ledger übernehmen (XMRig-Login für die Zuordnung der Auszahlungen; gilt ab dem nächsten Start)
+  name="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("name") or "")' "$resp" 2>/dev/null || true)"
+  if [ -n "$name" ] && [ "$name" != "$( { [ -r "$CONF_DIR/name" ] && head -n 1 "$CONF_DIR/name"; } || true )" ]; then
+    printf '%s\n' "$name" > "$CONF_DIR/name"
+  fi
 }
 
 rotate_log() {

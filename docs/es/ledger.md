@@ -94,13 +94,18 @@ equipos propios participaron y con qué parte: en **Zuflüsse** («Verursacht vo
 
 - **exakt** (exacto): a partir del log de P2Pool. Cada share propia aparece con hora, dificultad y dirección del
   cliente (`SHARE FOUND: … client <IP:puerto>[, user <nombre>]`), cada pago con la altura del bloque. El ledger lee
-  el log de forma continua cada 60 s (tablas `p2pool_shares`, `p2pool_payouts`). La IP del cliente se asigna a un
-  equipo mediante `[[miner]]` y los equipos emparejados; si el login de XMRig (`-u <nombre>`) coincide con un
-  nombre de equipo, tiene prioridad y sobrevive a cambios de IP. Las direcciones desconocidas aparecen como
-  «unbekannt».
+  el log de forma continua cada 60 s (tablas `p2pool_shares`, `p2pool_payouts`). El ledger reconoce el equipo de
+  una share por el login de XMRig: el instalador de `deploy/mac` configura XMRig con el
+  nombre del equipo como login (`-u <nombre>`, guardado en `~/.config/moneta/name`, tomado del ledger en los equipos
+  emparejados). Si no, cuenta la IP del cliente de `[[miner]]` o del emparejamiento.
+- **eindeutig** (inequívoco): login `x` y una dirección que no pertenece a ningún equipo; es lo típico cuando
+  P2Pool, en la red de Docker, solo ve la dirección de la pasarela. Entonces deciden los tiempos de minería del
+  ledger: si en el momento de la share (± dos consultas, por horas pasados 30 días) solo minaba un equipo, es suya.
+  El resultado se guarda por share. Requisito: todos los equipos del pool están registrados en el ledger.
 - **teilweise** (parcial): el log empieza dentro de la ventana de este pago.
-- **geschätzt** (estimado): sin shares del log (falta el log o empieza más tarde); reparto según la parte de hashes
-  de los valores por hora del análisis.
+- **geschätzt** (estimado): si en el momento de una share minaban varios equipos, se reparte según su hashrate en
+  ese instante (rombo hueco en el gráfico). Sin shares del log (falta el log o empieza más tarde), el reparto sigue
+  la parte de hashes en toda la ventana. Ningún equipo minando según el ledger: «unbekannt».
 
 **Activar:** el servicio `ledger` recibe el volumen de P2Pool en solo lectura (`deploy/nas/compose.yaml`):
 
@@ -158,8 +163,9 @@ Pruebas: `python -m pytest -q ledger/tests` (billetera, XMRig y cotizaciones sim
   hashrate informado × intervalo de consulta (aproximación); el valor esperado ignora uncles/huérfanos. Solo
   visualización, no es base fiscal.
 - Pago → equipo: la ventana se basa en el tiempo (2160 × tiempo de bloque) y por tanto aproxima la ventana PPLNS;
-  no se tienen en cuenta los uncles. Si P2Pool ve una dirección interna de Docker en lugar de la IP del equipo,
-  ayuda un login de XMRig con el nombre del equipo.
+  no se tienen en cuenta los uncles. Detrás del proxy de puertos de Docker, P2Pool solo ve la
+  dirección de la pasarela; entonces cuenta el login de XMRig. Las shares anteriores se atribuyen por los tiempos
+  de minería.
 - CoinGecko (gratuito, sin garantía); con la API gratuita, las cotizaciones históricas solo llegan a
   aproximadamente un año atrás.
 - El tiempo de minería solo cuenta mientras el ledger está en marcha y alcanza el equipo (los costes tienden a

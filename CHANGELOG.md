@@ -16,6 +16,13 @@ Contributors: add user-facing changes under "Unreleased".
   report and tax data are unchanged. Past payouts are attributed as far back as `p2pool.log` reaches. No external
   services are queried (design decision D-12).
 - DB schema v5 (additive: `p2pool_shares`, `p2pool_payouts`).
+- Payout → computer behind Docker: P2Pool behind Docker's port proxy only sees the gateway address, so the client
+  IP cannot identify a computer. A share's computer now comes from the XMRig login (device name, matched the way
+  P2Pool shortens it), then the client IP, then the ledger's mining times at the time of the share: only one
+  computer mining → „eindeutig“, several → split by their hashrate at that moment („geschätzt“, hollow diamond in
+  the chart). The result is stored per share, since per-minute values are deleted after 30 days. New method label
+  „eindeutig“; the table „Je Rechner“ counts it as „exakt/eindeutig“ (design decision D-13).
+- DB schema v6 (additive: `p2pool_shares.source`, `p2pool_shares.parts`).
 
 **deploy/nas**
 - `compose.yaml`: the `ledger` service mounts `p2pool-data:/p2pool:ro` (for the P2Pool log). Replace
@@ -26,6 +33,10 @@ Contributors: add user-facing changes under "Unreleased".
   and `ledger` and prints the log and rollback steps. `--check` only compares versions. The version stays pinned.
 
 **deploy/mac**
+- XMRig logs in to P2Pool with the device name (`-u`, from `~/.config/moneta/name`): the installer asks for it (or
+  takes it from pairing), and `moneta-miner.sh heartbeat` keeps it in sync with the ledger. Lets the ledger
+  attribute payouts to computers even when P2Pool only sees a Docker address. Existing Macs: `git pull`, then run
+  `install.sh` again.
 - `einmessen.sh` measures a ladder of steps up to all cores instead of two thread counts (e.g. M4 with 4 + 6 cores:
   3, 4, 7, 10; ascending, no cool-down) and suggests the step with the highest balance of calculated revenue and
   electricity cost, using the figures from the ledger; without them, the best hashrate per watt. The table shows

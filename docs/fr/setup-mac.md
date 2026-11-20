@@ -46,6 +46,11 @@ l'ordinateur qu'à partir de la validation ; les watts sont figés à chaque rel
 reste recommandée, mais n'est plus indispensable : à chaque démarrage, l'ordinateur se signale au ledger
 (`moneta-miner.sh heartbeat`) et une IP modifiée est reprise.
 
+XMRig se connecte à P2Pool avec le nom de l'appareil (`~/.config/moneta/name`, repris du ledger pour les
+ordinateurs appairés). Le ledger s'en sert pour attribuer shares et paiements à l'ordinateur, même si P2Pool ne
+voit qu'une adresse interne dans le réseau Docker ([Paiement → ordinateur](ledger.md#paiement--ordinateur)).
+Ordinateurs déjà configurés : `git pull` puis relancer `install.sh`.
+
 Sans questions (p. ex. pour plusieurs ordinateurs) : `LEDGER=http://<IP-NAS>:8090 CODE=<code> THREADS=3 MEASURE=n
 AUTOSTART=n FIREWALL=j START=n ~/Moneta/deploy/mac/install.sh`. Désinstaller : `~/Moneta/deploy/mac/install.sh
 --uninstall` (réglages, journal et XMRig sont conservés).

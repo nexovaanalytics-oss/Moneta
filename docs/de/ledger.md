@@ -87,12 +87,18 @@ Tabelle „Je Rechner“) und unter **Auswertung** (Zeitleiste „Shares und Aus
 
 - **exakt:** aus dem P2Pool-Log. Jede eigene Share steht dort mit Zeit, Difficulty und Client-Adresse
   (`SHARE FOUND: … client <IP:Port>[, user <Name>]`), jede Auszahlung mit Blockhöhe. Der Ledger liest das Log alle
-  60 s fortlaufend ein (Tabellen `p2pool_shares`, `p2pool_payouts`). Die Client-IP wird über `[[miner]]` und die
-  gekoppelten Rechner einem Gerät zugeordnet; stimmt der XMRig-Login (`-u <Name>`) mit einem Gerätenamen überein,
-  hat er Vorrang und übersteht so IP-Wechsel. Unbekannte Adressen erscheinen als „unbekannt“.
+  60 s fortlaufend ein (Tabellen `p2pool_shares`, `p2pool_payouts`). Den Rechner einer Share erkennt der Ledger am
+  XMRig-Login: Der Installer aus `deploy/mac` richtet XMRig mit dem Gerätenamen als Login ein
+  (`-u <Name>`, gespeichert in `~/.config/moneta/name`, bei gekoppelten Rechnern vom Ledger übernommen). Sonst
+  gilt die Client-IP aus `[[miner]]` bzw. der Kopplung.
+- **eindeutig:** Login `x` und eine Adresse, die keinem Rechner gehört – typisch, wenn P2Pool im Docker-Netz nur
+  die Gateway-Adresse sieht. Dann entscheiden die Mining-Zeiten des Ledgers: Minte zum Zeitpunkt der Share (± zwei
+  Abfragen, nach 30 Tagen auf Stundenbasis) nur ein Rechner, gehört sie ihm. Das Ergebnis wird je Share
+  gespeichert. Voraussetzung: Alle Rechner am Pool sind im Ledger erfasst.
 - **teilweise:** Das Log beginnt erst innerhalb des Fensters dieser Auszahlung.
-- **geschätzt:** keine Shares aus dem Log (Log fehlt oder beginnt später) – Aufteilung nach Hash-Anteil aus den
-  Stundenwerten der Auswertung.
+- **geschätzt:** Minten zum Zeitpunkt einer Share mehrere Rechner, wird sie nach deren Hashrate in diesem Moment
+  aufgeteilt (im Diagramm hohle Raute). Ohne Shares aus dem Log (Log fehlt oder beginnt später) wird nach dem
+  Hash-Anteil im ganzen Fenster aufgeteilt. Kein Rechner minte laut Ledger: „unbekannt“.
 
 **Einbinden:** Der Dienst `ledger` bekommt das P2Pool-Volume nur lesend (`deploy/nas/compose.yaml`):
 
@@ -148,8 +154,8 @@ Tests: `python -m pytest -q ledger/tests` (Fake-Wallet, Fake-XMRig, Fake-Kurse �
 - Auswertung: Minutenwerte (mit Zeitleiste) bleiben 30 Tage, danach Stundenwerte. Hashes = gemeldete Hashrate ×
   Abfrageintervall (Näherung); der Gegenwert berücksichtigt keine Uncles/Orphans. Reine Anzeige, keine Steuergrundlage.
 - Auszahlung → Rechner: Das Fenster ist zeitbasiert (2160 × Blockzeit) und damit eine Näherung an das
-  PPLNS-Fenster; Uncles bleiben unberücksichtigt. Sieht P2Pool statt der Rechner-IP nur eine Docker-interne
-  Adresse, hilft ein XMRig-Login mit dem Gerätenamen.
+  PPLNS-Fenster; Uncles bleiben unberücksichtigt. P2Pool hinter dem Docker-Port-Proxy sieht nur die
+  Gateway-Adresse; maßgeblich ist dann der XMRig-Login. Shares aus der Zeit davor ordnen die Mining-Zeiten zu.
 - CoinGecko (kostenlos, ohne Gewähr); historische Kurse über die freie API nur etwa ein Jahr zurück.
 - Mining-Zeit zählt nur, solange der Ledger läuft und den Mac erreicht (eher zu niedrige als zu hohe Kosten).
 - Netzwerkgebühren werden im Verkaufs-Rechner nicht abgezogen.

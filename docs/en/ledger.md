@@ -92,12 +92,18 @@ computers took part and with what share – under **Zuflüsse** („Verursacht v
 
 - **exakt** (exact): from the P2Pool log. Every own share is logged with time, difficulty and client address
   (`SHARE FOUND: … client <IP:port>[, user <name>]`), every payout with its block height. The ledger reads the log
-  incrementally every 60 s (tables `p2pool_shares`, `p2pool_payouts`). The client IP is mapped to a device via
-  `[[miner]]` and paired computers; if the XMRig login (`-u <name>`) matches a device name, it takes precedence
-  and survives IP changes. Unknown addresses appear as „unbekannt“.
+  incrementally every 60 s (tables `p2pool_shares`, `p2pool_payouts`). The ledger recognises a share's computer by
+  the XMRig login: the installer from `deploy/mac` sets up XMRig with the device name as login
+  (`-u <name>`, stored in `~/.config/moneta/name`, taken from the ledger for paired computers). Otherwise the
+  client IP from `[[miner]]` or pairing applies.
+- **eindeutig** (unambiguous): login `x` and an address that belongs to no computer – typical when P2Pool on the
+  Docker network only sees the gateway address. Then the ledger's mining times decide: if only one computer was
+  mining at the time of the share (± two polls, hourly after 30 days), it is that computer's. The result is stored
+  per share. Requires all computers on the pool to be known to the ledger.
 - **teilweise** (partial): the log only starts within this payout's window.
-- **geschätzt** (estimated): no shares from the log (log missing or starts later) – split by hash share from the
-  analysis' hourly values.
+- **geschätzt** (estimated): if several computers were mining at the time of a share, it is split by their
+  hashrate at that moment (hollow diamond in the chart). Without shares from the log (log missing or starts later)
+  the split follows the hash share over the whole window. No computer mining according to the ledger: „unbekannt“.
 
 **Enable:** the `ledger` service gets the P2Pool volume read-only (`deploy/nas/compose.yaml`):
 
@@ -153,8 +159,8 @@ Tests: `python -m pytest -q ledger/tests` (fake wallet, fake XMRig, fake prices 
 - Analysis: per-minute values (with timeline) are kept for 30 days, hourly values after that. Hashes = reported
   hashrate × poll interval (approximation); the expected value ignores uncles/orphans. Display only, not a tax basis.
 - Payout → computer: the window is time-based (2160 × block time) and so approximates the PPLNS window; uncles
-  are ignored. If P2Pool sees a Docker-internal address instead of the computer's IP, an XMRig login with the
-  device name helps.
+  are ignored. P2Pool behind Docker's port proxy only sees the gateway address; the XMRig login is
+  what counts then. Shares from before that are attributed via mining times.
 - CoinGecko (free, no guarantee); historical prices via the free API go back only about one year.
 - Mining time only counts while the ledger is running and can reach the computer (costs tend to be
   under- rather than overstated).

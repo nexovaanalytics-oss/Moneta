@@ -33,6 +33,9 @@ Contributors: add user-facing changes under "Unreleased".
   and `ledger` and prints the log and rollback steps. `--check` only compares versions. The version stays pinned.
 
 **deploy/mac**
+- Fix: `install.sh` aborted at the end with `name…: unbound variable` on macOS (bash 3.2 reads the byte after
+  `$name` in „$name“ as part of the variable name). The device name was already saved, but XMRig was not
+  restarted. Variables before typographic quotes are now written as `${name}`.
 - Fix: the XMRig log `~/Library/Logs/Moneta/xmrig.log` stayed empty under launchd. XMRig only prints its console
   output to a terminal or pipe, not to a redirected file, so the menu bar app's "Log" button showed nothing (e.g.
   no reason for rejected shares). `xmrig-start.sh` now also passes `--log-file` when its output is not a terminal.

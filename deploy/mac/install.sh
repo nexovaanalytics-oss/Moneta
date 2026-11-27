@@ -421,7 +421,7 @@ if [ -n "$ledger" ] && [ "$pairing" = true ] && [[ "$ip" =~ ^[0-9.]+$ ]]; then
     paired=true
     st="$(json_get "$(cat "$resp")" status)"
     name="$(json_get "$(cat "$resp")" name)"
-    ok "Schon gekoppelt als „$name“ ($([ "$st" = active ] && echo freigegeben || echo "wartet auf Freigabe im Dashboard"))"
+    ok "Schon gekoppelt als „${name}“ ($([ "$st" = active ] && echo freigegeben || echo "wartet auf Freigabe im Dashboard"))"
   else
     echo "  Im Dashboard ($ledger) unter „Geräte“ auf „Neuen Rechner koppeln – Code erzeugen“ klicken"
     echo "  und den 6-stelligen Code hier eingeben (Enter = überspringen, dann [[miner]]-Block von Hand)."
@@ -439,7 +439,7 @@ print(json.dumps({"code": code, "name": name, "url": url, "token": token, "threa
         --data "$body" "$ledger/api/pair" || true)"
       msg="$(json_get "$(cat "$resp")" error)"
       case "$code_http" in
-        201) paired=true; ok "Gekoppelt als „$name“ – jetzt im Dashboard unter „Geräte“ freigeben"; break ;;
+        201) paired=true; ok "Gekoppelt als „${name}“ – jetzt im Dashboard unter „Geräte“ freigeben"; break ;;
         409) warn "$msg"; name="$(ask "Anderer Gerätename" "$name (2)" "")" ;;
         *)   warn "${msg:-Kopplung fehlgeschlagen (HTTP $code_http)}" ;;
       esac
@@ -489,7 +489,7 @@ fi
 # XMRig meldet sich bei P2Pool mit dem Gerätenamen an (Zuordnung der Auszahlungen im Ledger)
 if [ -n "$name" ]; then
   printf '%s\n' "$name" > "$CONF_DIR/name"
-  ok "XMRig-Login: „$name“ (ordnet Shares und Auszahlungen diesem Rechner zu)"
+  ok "XMRig-Login: „${name}“ (ordnet Shares und Auszahlungen diesem Rechner zu)"
 fi
 
 say "Fertig"

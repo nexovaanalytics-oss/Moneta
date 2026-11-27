@@ -180,6 +180,9 @@ Notas:
 - `MEMORY 98 %` en la salida de XMRig es la caché de macOS; lo que importa es la presión de memoria en el Monitor
   de Actividad.
 - "huge pages unavailable" es normal en macOS.
+- Shares stratum rechazadas (contador en la app): XMRig indica el motivo en el registro, p. ej.
+  `grep -i rejected ~/Library/Logs/Moneta/xmrig.log | tail` (texto entre comillas). Para el rendimiento cuenta
+  la proporción sobre todas las shares stratum, no el número absoluto.
 - Windows: Smart App Control bloquea XMRig sin posibilidad de excepción; considera usar WSL2.
 
 ## 5. Billetera de minería

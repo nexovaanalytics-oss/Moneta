@@ -33,6 +33,10 @@ Contributors: add user-facing changes under "Unreleased".
   and `ledger` and prints the log and rollback steps. `--check` only compares versions. The version stays pinned.
 
 **deploy/mac**
+- Fix: the XMRig log `~/Library/Logs/Moneta/xmrig.log` stayed empty under launchd. XMRig only prints its console
+  output to a terminal or pipe, not to a redirected file, so the menu bar app's "Log" button showed nothing (e.g.
+  no reason for rejected shares). `xmrig-start.sh` now also passes `--log-file` when its output is not a terminal.
+  Existing Macs: `git pull`, then run `install.sh` again (or copy `xmrig-start.sh` and restart the miner).
 - XMRig logs in to P2Pool with the device name (`-u`, from `~/.config/moneta/name`): the installer asks for it (or
   takes it from pairing), and `moneta-miner.sh heartbeat` keeps it in sync with the ledger. Lets the ledger
   attribute payouts to computers even when P2Pool only sees a Docker address. Existing Macs: `git pull`, then run

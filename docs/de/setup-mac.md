@@ -176,6 +176,9 @@ Hinweise:
 - Nur am Netzteil (`--pause-on-battery`); bei Laptops Ladegrenze ~80 % (z. B. AlDente), harte Unterlage.
 - `MEMORY 98 %` in der XMRig-Ausgabe ist macOS-Cache; maßgeblich ist der Speicherdruck in der Aktivitätsanzeige.
 - „huge pages unavailable“ ist unter macOS normal.
+- Abgelehnte Stratum-Shares (Zähler in der App): den Grund nennt XMRig im Log, z. B.
+  `grep -i rejected ~/Library/Logs/Moneta/xmrig.log | tail` (Text in Anführungszeichen). Für den Ertrag zählt
+  der Anteil an allen Stratum-Shares, nicht die absolute Zahl.
 - Windows: Smart App Control blockiert XMRig ohne Ausnahmemöglichkeit; ggf. WSL2 nutzen.
 
 ## 5. Mining-Wallet

@@ -11,7 +11,8 @@
 #   ~/.config/moneta/threads       optional: Thread-Zahl oder "all"
 #   ~/.config/moneta/name          optional: Gerätename im Ledger; XMRig meldet sich damit bei P2Pool an
 #
-# Wird auch vom launchd-Agent des Installers aufgerufen (Ausgabe dann im Log, ohne Farben).
+# Wird auch vom launchd-Agent des Installers aufgerufen (Ausgabe dann im Log ~/Library/Logs/Moneta/xmrig.log,
+# ohne Farben; anderer Ort über LOG_FILE=…).
 set -euo pipefail
 
 CONF_DIR="${CONF_DIR:-$HOME/.config/moneta}"
@@ -20,6 +21,7 @@ API_PORT="${API_PORT:-18000}"
 TOKEN_FILE="${TOKEN_FILE:-$CONF_DIR/xmrig-token}"
 THREADS="${1:-$( { [ -r "$CONF_DIR/threads" ] && tr -d '[:space:]' < "$CONF_DIR/threads"; } || true )}"
 WORKER="${WORKER:-$( { [ -r "$CONF_DIR/name" ] && head -n 1 "$CONF_DIR/name"; } || true )}"
+LOG_FILE="${LOG_FILE:-$HOME/Library/Logs/Moneta/xmrig.log}"   # wie StandardOutPath im launchd-Agent
 
 if [ -z "$POOL" ]; then
   echo "Pool-Adresse fehlt: echo '<NAS-IP>:3333' > $CONF_DIR/pool  (oder POOL=… setzen)" >&2
@@ -58,7 +60,11 @@ if [ -n "$WORKER" ]; then
   args+=(-u "$WORKER")
 fi
 if [ ! -t 1 ]; then
-  args+=(--no-color)   # Ausgabe geht in ein Log
+  # Ausgabe geht in ein Log (launchd: StandardOutPath). XMRig schreibt seine Konsolenausgabe aber nur auf ein
+  # Terminal oder eine Pipe – bei einer umgeleiteten Datei bleibt sie leer. Deshalb zusätzlich --log-file auf
+  # dieselbe Datei; XMRig hängt an, Fehlermeldungen dieses Skripts landen weiter über stderr darin.
+  mkdir -p "$(dirname "$LOG_FILE")"
+  args+=(--no-color --log-file "$LOG_FILE")
 fi
 
 # caffeinate verhindert den Ruhezustand, solange XMRig läuft. Es beobachtet diese PID, die nach dem exec

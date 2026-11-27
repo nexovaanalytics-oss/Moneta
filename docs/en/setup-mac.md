@@ -177,6 +177,9 @@ Notes:
   hard surface.
 - `MEMORY 98 %` in XMRig's output is the macOS cache; what matters is memory pressure in Activity Monitor.
 - "huge pages unavailable" is normal on macOS.
+- Rejected stratum shares (counter in the app): XMRig states the reason in the log, e.g.
+  `grep -i rejected ~/Library/Logs/Moneta/xmrig.log | tail` (text in quotes). What matters for the yield is the
+  share of all stratum shares, not the absolute number.
 - Windows: Smart App Control blocks XMRig with no way to add an exception; consider WSL2.
 
 ## 5. Mining wallet
